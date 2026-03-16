@@ -172,9 +172,10 @@ class AgencyHeartbeat:
             self.last_hustle = time.time()
             self._save_timestamp("last_hustle", self.last_hustle)
 
-        # 2. Check if it's time to self-evolve (Improve Codebase)
+        # 2. Check if it's time to self-evolve + learn (Improve Codebase)
         if now - self.last_evolution > (self.config.evolution_interval_hours * 3600):
             await self._run_evolution_cycle()
+            await self._run_learning_cycle()
             self.last_evolution = time.time()
             self._save_timestamp("last_evolution", self.last_evolution)
 
@@ -206,6 +207,20 @@ class AgencyHeartbeat:
             self._evolution.evolve()
         except Exception as e:
             logger.error(f"Evolution cycle failed: {e}")
+
+    async def _run_learning_cycle(self) -> None:
+        """Analyze past missions and extract learnings."""
+        logger.info("Heartbeat: Running Learning Cycle...")
+        try:
+            from kernel.mission_learner import get_mission_learner
+            learner = get_mission_learner()
+            learnings = learner.analyze_recent_missions()
+            if learnings:
+                logger.info(
+                    "Learning cycle: %d insights extracted", len(learnings)
+                )
+        except Exception as e:
+            logger.error(f"Learning cycle failed: {e}")
 
     async def _run_mission_cycle(self) -> None:
         """Process queued missions — one per studio in parallel."""

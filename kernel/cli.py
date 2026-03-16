@@ -1238,6 +1238,79 @@ def auto_learn() -> None:
     console.print(table)
 
 
+# ── Learning ──────────────────────────────────────────────
+
+@main.group()
+def learn():
+    """🧠 Mission learning — analyze past missions and extract insights."""
+    pass
+
+
+@learn.command("analyze")
+@click.option("--limit", default=50, help="Number of recent missions to analyze")
+def learn_analyze(limit: int) -> None:
+    """🧠 Run learning analysis on completed missions."""
+    from kernel.mission_learner import get_mission_learner
+
+    learner = get_mission_learner()
+    console.print(f"[bold]🧠 Analyzing last {limit} missions...[/bold]")
+
+    learnings = learner.analyze_recent_missions(limit=limit)
+
+    if not learnings:
+        console.print("[yellow]No new learnings found.[/yellow]")
+        return
+
+    table = Table(title=f"📊 {len(learnings)} Insights Extracted")
+    table.add_column("Category", style="cyan")
+    table.add_column("Insight", style="white", max_width=60)
+    table.add_column("Confidence", style="green")
+    table.add_column("Action", style="yellow", max_width=40)
+
+    for l in learnings:
+        table.add_row(
+            l.category,
+            l.insight[:60],
+            f"{l.confidence:.0%}",
+            l.recommended_action[:40],
+        )
+
+    console.print(table)
+
+
+@learn.command("show")
+@click.option("--category", type=click.Choice(["model_perf", "studio_pattern", "failure"]), default=None)
+@click.option("--limit", default=20)
+def learn_show(category: str | None, limit: int) -> None:
+    """📊 Show stored learnings."""
+    from kernel.mission_learner import get_mission_learner
+
+    learner = get_mission_learner()
+    learnings = learner.get_learnings(category=category, limit=limit)
+
+    if not learnings:
+        console.print("[yellow]No learnings stored yet. Run `agency learn analyze` first.[/yellow]")
+        return
+
+    table = Table(title=f"🧠 Stored Learnings ({len(learnings)})")
+    table.add_column("#", style="dim")
+    table.add_column("Category", style="cyan")
+    table.add_column("Insight", style="white", max_width=50)
+    table.add_column("Conf.", style="green")
+    table.add_column("Recommendation", style="yellow", max_width=40)
+
+    for l in learnings:
+        table.add_row(
+            str(l.get("id", "")),
+            l.get("category", ""),
+            l.get("insight", "")[:50],
+            f"{l.get('confidence', 0):.0%}",
+            l.get("recommended_action", "")[:40],
+        )
+
+    console.print(table)
+
+
 # ── Audit Trail ──────────────────────────────────────────────
 
 @main.group()

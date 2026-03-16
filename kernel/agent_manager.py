@@ -278,6 +278,21 @@ class AgentManager:
             if memory_context:
                 user_msg = f"Recent context:\n{memory_context}\n\n{user_msg}"
 
+        # Inject learnings from past missions (self-learning)
+        try:
+            from kernel.mission_learner import get_mission_learner
+            learner = get_mission_learner()
+            summary = learner.get_learning_summary()
+            tips = []
+            for insight in summary.get("model_insights", [])[:2]:
+                tips.append(f"• {insight}")
+            for insight in summary.get("recommendations", [])[:2]:
+                tips.append(f"• {insight}")
+            if tips:
+                user_msg += "\n\n[System Learnings]\n" + "\n".join(tips)
+        except Exception:
+            pass  # Non-critical
+
         # Determine studio for model selection
         target_studio = studio or self._studio_for_agent(agent_id) or "dev"
 
