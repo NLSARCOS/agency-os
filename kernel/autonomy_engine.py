@@ -73,6 +73,62 @@ class AutonomyEngine:
         self.memory = get_memory_manager()
         self.bus = get_event_bus()
         self._learnings: dict[str, LearningEntry] = {}
+        self._init_db()
+        self._load_learnings_from_db()
+
+    def _init_db(self) -> None:
+        """Create learnings table if not exists."""
+        try:
+            self.state._conn.execute("""
+                CREATE TABLE IF NOT EXISTS autonomy_learnings (
+                    key TEXT PRIMARY KEY,
+                    pattern TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    studio TEXT DEFAULT '',
+                    operation TEXT DEFAULT '',
+                    confidence REAL DEFAULT 0.5,
+                    count INTEGER DEFAULT 1,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            self.state._conn.commit()
+        except Exception as e:
+            logger.debug("Learnings table init: %s", e)
+
+    def _load_learnings_from_db(self) -> None:
+        """Load persisted learnings from SQLite on startup."""
+        try:
+            rows = self.state._conn.execute(
+                "SELECT key, pattern, outcome, studio, operation, confidence, count "
+                "FROM autonomy_learnings"
+            ).fetchall()
+            for r in rows:
+                self._learnings[r["key"]] = LearningEntry(
+                    pattern=r["pattern"],
+                    outcome=r["outcome"],
+                    studio=r["studio"],
+                    operation=r["operation"],
+                    confidence=r["confidence"],
+                    count=r["count"],
+                )
+            if rows:
+                logger.info("Loaded %d learnings from database", len(rows))
+        except Exception as e:
+            logger.debug("Could not load learnings: %s", e)
+
+    def _persist_learning(self, key: str, entry: LearningEntry) -> None:
+        """Persist a learning entry to SQLite."""
+        try:
+            self.state._conn.execute(
+                """INSERT OR REPLACE INTO autonomy_learnings
+                   (key, pattern, outcome, studio, operation, confidence, count, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (key, entry.pattern, entry.outcome, entry.studio,
+                 entry.operation, entry.confidence, entry.count),
+            )
+            self.state._conn.commit()
+        except Exception as e:
+            logger.debug("Could not persist learning: %s", e)
 
     # ── 1. DISCOVER ───────────────────────────────────────────
 
@@ -283,7 +339,6 @@ class AutonomyEngine:
         if key in self._learnings:
             entry = self._learnings[key]
             entry.count += 1
-            # Adjust confidence based on outcomes
             if outcome == "success":
                 entry.confidence = min(1.0, entry.confidence + 0.1)
             else:
@@ -296,6 +351,9 @@ class AutonomyEngine:
                 operation=operation,
                 confidence=0.6 if outcome == "success" else 0.3,
             )
+
+        # Persist to SQLite (survives restarts)
+        self._persist_learning(key, self._learnings[key])
 
         # Persist to knowledge base
         self.memory.learn(
