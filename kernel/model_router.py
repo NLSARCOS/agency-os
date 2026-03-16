@@ -25,18 +25,18 @@ DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     "leadops": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "marketing": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "sales": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
     ],
     "dev": [
-        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
         {"name": "claude-sonnet-4-20250514", "provider": "anthropic", "tier": "premium"},
@@ -44,11 +44,11 @@ DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     ],
     "analytics": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "creative": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "abm": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},

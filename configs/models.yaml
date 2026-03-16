@@ -10,7 +10,7 @@ pools:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: openrouter/openai/gpt-oss-20b:free
+    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
@@ -18,7 +18,7 @@ pools:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: openrouter/openai/gpt-oss-20b:free
+    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
@@ -31,7 +31,7 @@ pools:
       tier: free
 
   dev:
-    - name: openrouter/openai/gpt-oss-20b:free
+    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
     - name: openrouter/stepfun/step-3.5-flash:free
@@ -59,7 +59,7 @@ pools:
     - name: openrouter/arcee-ai/trinity-mini:free
       provider: openrouter
       tier: free
-    - name: openrouter/openai/gpt-oss-20b:free
+    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
@@ -67,7 +67,7 @@ pools:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: openrouter/openai/gpt-oss-20b:free
+    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
