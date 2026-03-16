@@ -1,108 +1,102 @@
 # ── Agency OS Model Pools ───────────────────────────────
 # Auto-generated from detected providers
-# Priority: local (Ollama) → openclaw (OAuth) → free (OpenRouter) → premium (API keys)
+# Priority: OpenClaw OAuth (best) → Ollama (local) → OpenRouter (free)
 
 pools:
   leadops:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: minimax-m2.5:cloud
-      provider: ollama
-      tier: local
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
+    - name: gpt-5.4
+      provider: openclaw
+      tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/openrouter/hunter-alpha
-      provider: openrouter
-      tier: free
-    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
   marketing:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
+    - name: codex-5.3
+      provider: openclaw
+      tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/openrouter/hunter-alpha
-      provider: openrouter
-      tier: free
-    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
   sales:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
+    - name: gpt-5.4
+      provider: openclaw
+      tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/openrouter/hunter-alpha
-      provider: openrouter
-      tier: free
-    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
   dev:
+    - name: codex-5.3
+      provider: openclaw
+      tier: openclaw
+    - name: gpt-5.4
+      provider: openclaw
+      tier: openclaw
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
     - name: minimax-m2.5:cloud
       provider: ollama
       tier: local
-    - name: codex-5.3
-      provider: openclaw
-      tier: openclaw
     - name: openrouter/qwen/qwen3-coder:free
-      provider: openrouter
-      tier: free
-    - name: openrouter/openrouter/hunter-alpha
       provider: openrouter
       tier: free
 
   abm:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: openrouter/openrouter/hunter-alpha
-      provider: openrouter
-      tier: free
+    - name: codex-5.3
+      provider: openclaw
+      tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
   analytics:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/qwen/qwen3-coder:free
-      provider: openrouter
-      tier: free
-    - name: openrouter/openrouter/healer-alpha
       provider: openrouter
       tier: free
 
   creative:
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
+    - name: codex-5.3
+      provider: openclaw
+      tier: openclaw
+    - name: kimi-k2.5:cloud
+      provider: ollama
+      tier: local
     - name: openrouter/openrouter/hunter-alpha
-      provider: openrouter
-      tier: free
-    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
