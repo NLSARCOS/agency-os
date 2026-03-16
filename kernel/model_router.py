@@ -23,36 +23,36 @@ logger = logging.getLogger("agency.models")
 
 DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     "leadops": [
-        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "marketing": [
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
     ],
     "sales": [
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
     ],
     "dev": [
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter", "tier": "free"},
         {"name": "claude-sonnet-4-20250514", "provider": "anthropic", "tier": "premium"},
         {"name": "gpt-4o", "provider": "openai", "tier": "premium"},
     ],
     "analytics": [
-        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter", "tier": "free"},
     ],
     "creative": [
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
     ],
     "abm": [
-        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
 }
 
@@ -144,6 +144,22 @@ class ModelRouter:
                     )
                     self._update_health(model_cfg["name"], True)
                     return response
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429:
+                        retry_after = int(e.response.headers.get("Retry-After", "5"))
+                        logger.warning(
+                            "Model %s rate limited (429). Waiting %ds...",
+                            model_cfg["name"], retry_after,
+                        )
+                        time.sleep(retry_after)
+                        continue  # retry same model
+                    last_error = str(e)
+                    logger.warning(
+                        "Model %s attempt %d failed: %s",
+                        model_cfg["name"], attempt + 1, last_error,
+                    )
+                    self._update_health(model_cfg["name"], False, last_error)
+                    time.sleep(1 * (attempt + 1))
                 except Exception as e:
                     last_error = str(e)
                     logger.warning(
@@ -151,7 +167,7 @@ class ModelRouter:
                         model_cfg["name"], attempt + 1, last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
-                    time.sleep(1 * (attempt + 1))  # Backoff
+                    time.sleep(1 * (attempt + 1))
 
         # All models failed
         state = get_state()

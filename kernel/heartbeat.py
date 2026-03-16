@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import sqlite3
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -47,11 +49,30 @@ class AgencyHeartbeat:
         self._skill_evaluator = get_skill_evaluator()
         self._notifier = get_notifier()
         self.openclaw = get_openclaw()
-        
-        # State tracking
-        self.last_hustle: float = 0
-        self.last_evolution: float = 0
+
+        # Persistent state (survives restarts)
+        self._db_path = self.cfg.data_dir / "agency.db"
+        self._pid_file = self.cfg.data_dir / "heartbeat.pid"
+        self.last_hustle: float = self._load_timestamp("last_hustle")
+        self.last_evolution: float = self._load_timestamp("last_evolution")
         self.is_running: bool = False
+
+    def _load_timestamp(self, key: str) -> float:
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)")
+                row = conn.execute("SELECT value FROM heartbeat_state WHERE key = ?", (key,)).fetchone()
+                return row[0] if row else 0.0
+        except Exception:
+            return 0.0
+
+    def _save_timestamp(self, key: str, value: float) -> None:
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)")
+                conn.execute("INSERT OR REPLACE INTO heartbeat_state (key, value) VALUES (?, ?)", (key, value))
+        except Exception as e:
+            logger.warning("Failed to persist %s: %s", key, e)
 
     # ── i18n messages ────────────────────────────────────────
     _MESSAGES = {
@@ -97,16 +118,18 @@ class AgencyHeartbeat:
         """Start the infinite vitality loop."""
         if self.is_running:
             return
-            
+
         self.is_running = True
+
+        # Write PID file for external health checks
+        self._pid_file.write_text(str(os.getpid()))
+
         logger.info(
-            f"Agency OS Heartbeat STARTED. "
+            f"Agency OS Heartbeat STARTED (PID {os.getpid()}). "
             f"[Tick: {self.config.tick_interval}s, "
             f"Hustle: {self.config.hustle_interval_hours}h, "
             f"Evolve: {self.config.evolution_interval_hours}h]"
         )
-        # No Telegram notification on startup — work silently.
-        # Only notify when something meaningful happens.
 
         try:
             while self.is_running:
@@ -118,10 +141,14 @@ class AgencyHeartbeat:
             logger.error(f"Heartbeat crashed: {e}")
         finally:
             self.is_running = False
+            if self._pid_file.exists():
+                self._pid_file.unlink(missing_ok=True)
 
     def stop(self) -> None:
         self.is_running = False
         logger.info("Agency OS Heartbeat STOPPED.")
+        if self._pid_file.exists():
+            self._pid_file.unlink(missing_ok=True)
 
     async def _tick(self) -> None:
         """The actual logic evaluated every minute."""
@@ -131,11 +158,13 @@ class AgencyHeartbeat:
         if now - self.last_hustle > (self.config.hustle_interval_hours * 3600):
             await self._run_hustle_cycle()
             self.last_hustle = time.time()
-            
+            self._save_timestamp("last_hustle", self.last_hustle)
+
         # 2. Check if it's time to self-evolve (Improve Codebase)
         if now - self.last_evolution > (self.config.evolution_interval_hours * 3600):
             await self._run_evolution_cycle()
             self.last_evolution = time.time()
+            self._save_timestamp("last_evolution", self.last_evolution)
             
     async def _run_hustle_cycle(self) -> None:
         logger.info("Heartbeat: Triggering Hustle Cycle...")
