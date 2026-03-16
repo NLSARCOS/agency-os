@@ -1,0 +1,59 @@
+# Sales — Outreach Workflow
+id: sales_outreach
+name: "Sales Outreach Pipeline"
+description: "Prospect research, outreach sequences, follow-up, close"
+version: "1.0"
+
+nodes:
+  - id: prospect_research
+    name: "Prospect Research"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Research the target prospect/company:
+      - Company overview, size, industry
+      - Key decision makers and their roles
+      - Recent news, funding, or events
+      - Pain points and opportunities
+      - LinkedIn and social presence
+
+  - id: personalize
+    name: "Outreach Personalization"
+    type: agent
+    agent: product-manager
+    task: |
+      Create personalized outreach based on research:
+      - Cold email sequence (3-5 emails)
+      - LinkedIn connection message
+      - Phone call script
+      - Value proposition tailored to their needs
+    depends_on: [prospect_research]
+
+  - id: review_outreach
+    name: "Outreach Approval"
+    type: human
+    task: "Review personalized outreach sequences before sending. Approve or modify."
+    depends_on: [personalize]
+
+  - id: execute_sequence
+    name: "Execute Outreach"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Prepare the outreach for execution:
+      - Format emails for CRM import
+      - Schedule sequence timing
+      - Set up follow-up reminders
+    depends_on: [review_outreach]
+
+  - id: track
+    name: "Track & Report"
+    type: agent
+    agent: product-owner
+    task: |
+      Create tracking plan:
+      - Response tracking metrics
+      - Follow-up schedule
+      - Pipeline stage updates
+      - Win/loss analysis template
+    depends_on: [execute_sequence]

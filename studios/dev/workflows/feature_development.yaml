@@ -1,0 +1,78 @@
+# Dev — Feature Development Workflow
+id: dev_feature
+name: "Feature Development Pipeline"
+description: "Plan, implement, test, and review a feature"
+version: "1.0"
+
+nodes:
+  - id: analyze
+    name: "Requirements Analysis"
+    type: agent
+    agent: product-manager
+    task: |
+      Analyze the feature request and produce:
+      - User stories with acceptance criteria
+      - Technical requirements
+      - Dependencies and risks
+      - Priority and estimated effort
+
+  - id: plan
+    name: "Technical Planning"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Create a detailed technical plan:
+      - Architecture decisions
+      - Component breakdown
+      - API contracts
+      - Database changes
+      - File structure changes
+    depends_on: [analyze]
+
+  - id: review_plan
+    name: "Plan Approval"
+    type: human
+    task: "Review the technical plan and approve or request changes before implementation begins."
+    depends_on: [plan]
+
+  - id: implement
+    name: "Implementation"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Implement the feature according to the approved plan.
+      Write clean, tested code following project conventions.
+    depends_on: [review_plan]
+    max_retries: 3
+
+  - id: test
+    name: "Testing"
+    type: agent
+    agent: test-engineer
+    task: |
+      Write and run tests for the implemented feature:
+      - Unit tests for core logic
+      - Integration tests for API endpoints
+      - Edge case coverage
+    depends_on: [implement]
+
+  - id: security_check
+    name: "Security Review"
+    type: agent
+    agent: security-auditor
+    task: |
+      Review the implementation for security vulnerabilities:
+      - Input validation
+      - Authentication/authorization
+      - Data exposure risks
+      - Injection vectors
+    depends_on: [implement]
+
+  - id: review_code
+    name: "Code Review"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Final code review combining test results and security findings.
+      Produce a summary of changes, test coverage, and any remaining issues.
+    depends_on: [test, security_check]

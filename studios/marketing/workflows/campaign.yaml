@@ -1,0 +1,73 @@
+# Marketing — Campaign Workflow
+id: marketing_campaign
+name: "Marketing Campaign Pipeline"
+description: "Full campaign lifecycle: strategy, content, channels, launch"
+version: "1.0"
+
+nodes:
+  - id: strategy
+    name: "Campaign Strategy"
+    type: agent
+    agent: product-owner
+    task: |
+      Define the campaign strategy:
+      - Target audience persona
+      - Key messaging and value proposition
+      - Campaign goals and KPIs
+      - Budget allocation
+      - Timeline
+
+  - id: content_plan
+    name: "Content Planning"
+    type: agent
+    agent: product-manager
+    task: |
+      Create a content plan based on the strategy:
+      - Blog posts / articles
+      - Social media calendar
+      - Email sequences
+      - Landing page copy
+      - Ad creatives brief
+    depends_on: [strategy]
+
+  - id: seo_optimization
+    name: "SEO Optimization"
+    type: agent
+    agent: seo-specialist
+    task: |
+      Optimize the content plan for search:
+      - Keyword research
+      - Content gap analysis
+      - On-page SEO recommendations
+      - Meta tags and structured data
+    depends_on: [content_plan]
+
+  - id: review_content
+    name: "Content Approval"
+    type: human
+    task: "Review the content plan and SEO strategy. Approve to proceed with execution."
+    depends_on: [seo_optimization]
+
+  - id: execute_campaign
+    name: "Campaign Execution"
+    type: agent
+    agent: product-manager
+    task: |
+      Execute the approved campaign plan:
+      - Create content drafts
+      - Set up email sequences
+      - Prepare social media posts
+      - Configure landing pages
+    depends_on: [review_content]
+    max_retries: 2
+
+  - id: report
+    name: "Campaign Report"
+    type: agent
+    agent: product-owner
+    task: |
+      Create a comprehensive campaign report with:
+      - Deliverables summary
+      - Timeline adherence
+      - Next steps and recommendations
+    depends_on: [execute_campaign]

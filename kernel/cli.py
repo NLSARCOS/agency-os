@@ -701,5 +701,228 @@ def init() -> None:
     console.print(f"  📝 Reports: {cfg.reports_dir}")
 
 
+# ── Workflow Commands ─────────────────────────────────────────
+
+@main.group()
+def workflow() -> None:
+    """Manage workflows (list, run, inspect)."""
+    pass
+
+
+@workflow.command("list")
+def workflow_list() -> None:
+    """List all available workflows."""
+    from kernel.workflow_engine import get_workflow_engine
+
+    engine = get_workflow_engine()
+    workflows = engine.list_workflows()
+
+    if not workflows:
+        console.print("[dim]No workflows found. Add YAML files to studios/*/workflows/[/dim]")
+        return
+
+    table = Table(title="📋 Workflows", border_style="blue")
+    table.add_column("ID", style="bold")
+    table.add_column("Name")
+    table.add_column("Studio", style="cyan")
+    table.add_column("Nodes", justify="right")
+    table.add_column("Description", style="dim")
+
+    for wf in workflows:
+        table.add_row(
+            wf["id"], wf["name"], wf["studio"],
+            str(wf["nodes"]), wf["description"][:50],
+        )
+    console.print(table)
+
+
+@workflow.command("run")
+@click.argument("workflow_id")
+@click.option("-m", "--mission", "mission_id", default=None, type=int, help="Link to mission ID")
+def workflow_run(workflow_id: str, mission_id: int | None) -> None:
+    """Execute a workflow by ID."""
+    from kernel.workflow_engine import get_workflow_engine
+
+    engine = get_workflow_engine()
+    console.print(f"[bold]📋 Running workflow: {workflow_id}...[/bold]")
+
+    with console.status("[green]Executing workflow..."):
+        run = engine.execute(workflow_id, mission_id=mission_id)
+
+    if run.status.value == "completed":
+        console.print(Panel(
+            f"[green]✅ Workflow completed[/green]\n"
+            f"  📋 Workflow: {run.workflow_id}\n"
+            f"  ⏱️  Duration: {run.duration_ms:.0f}ms\n"
+            f"  📦 Nodes: {len(run.node_results)}",
+            border_style="green",
+        ))
+        for node_id, data in run.node_results.items():
+            icon = {"completed": "✅", "failed": "❌", "skipped": "⏭️"}.get(data["status"], "⚪")
+            console.print(f"  {icon} {node_id}: {data['status']} ({data.get('duration_ms', 0):.0f}ms)")
+    elif run.status.value == "paused":
+        console.print(Panel(
+            f"[yellow]⏸️  Workflow paused — human input needed[/yellow]\n\n"
+            f"  📋 Run ID: {run.id}\n"
+            f"  📍 Node: {run.current_node}\n"
+            f"  💬 {run.human_input_request[:200]}",
+            border_style="yellow",
+        ))
+        console.print("[dim]Resume with: agency-os workflow resume [run_id] [response][/dim]")
+    else:
+        console.print(f"[red]❌ Workflow failed: {run.checkpoint.get('error', '')}[/red]")
+
+
+@workflow.command("runs")
+@click.option("-s", "--status", default=None, help="Filter by status")
+def workflow_runs(status: str | None) -> None:
+    """List workflow runs."""
+    from kernel.workflow_engine import get_workflow_engine
+
+    engine = get_workflow_engine()
+    runs = engine.list_runs(status)
+
+    if not runs:
+        console.print("[dim]No workflow runs found.[/dim]")
+        return
+
+    table = Table(title="📋 Workflow Runs", border_style="blue")
+    table.add_column("ID", style="bold")
+    table.add_column("Workflow")
+    table.add_column("Status")
+    table.add_column("Nodes", justify="right")
+    table.add_column("Duration", justify="right")
+
+    for r in runs:
+        s = r["status"]
+        icon = {"completed": "✅", "running": "🟢", "paused": "⏸️", "failed": "❌"}.get(s, "⚪")
+        table.add_row(
+            r["id"], r["workflow"], f"{icon} {s}",
+            str(r["nodes_completed"]),
+            f"{r['duration_ms']:.0f}ms",
+        )
+    console.print(table)
+
+
+@workflow.command("resume")
+@click.argument("run_id")
+@click.argument("response")
+def workflow_resume(run_id: str, response: str) -> None:
+    """Resume a paused workflow with human input."""
+    from kernel.workflow_engine import get_workflow_engine
+
+    engine = get_workflow_engine()
+    run = engine.resume(run_id, response)
+    if run:
+        console.print(f"[green]✅ Workflow resumed: {run.status.value}[/green]")
+    else:
+        console.print(f"[red]Run not found or not paused: {run_id}[/red]")
+
+
+# ── Memory Commands ───────────────────────────────────────────
+
+@main.group()
+def memory() -> None:
+    """Manage agent memory and knowledge base."""
+    pass
+
+
+@memory.command("list")
+@click.argument("agent_id")
+@click.option("-n", "--limit", default=20, type=int)
+def memory_list(agent_id: str, limit: int) -> None:
+    """List recent memory for an agent."""
+    from kernel.memory_manager import get_memory_manager
+
+    mm = get_memory_manager()
+    memories = mm.recall(agent_id, limit=limit)
+
+    if not memories:
+        console.print(f"[dim]No memories for agent: {agent_id}[/dim]")
+        return
+
+    table = Table(title=f"🧠 Memory: {agent_id}", border_style="magenta")
+    table.add_column("Role", style="bold")
+    table.add_column("Content")
+    table.add_column("Time", style="dim")
+
+    for m in memories:
+        table.add_row(m.role, m.content[:80], m.timestamp[:19])
+    console.print(table)
+
+
+@memory.command("search")
+@click.argument("agent_id")
+@click.argument("query")
+def memory_search(agent_id: str, query: str) -> None:
+    """Search agent memory by relevance."""
+    from kernel.memory_manager import get_memory_manager
+
+    mm = get_memory_manager()
+    results = mm.search_memory(agent_id, query)
+
+    if not results:
+        console.print(f"[dim]No relevant memories found.[/dim]")
+        return
+
+    table = Table(title=f"🔍 Memory Search: {query}", border_style="yellow")
+    table.add_column("Relevance", justify="right", style="bold")
+    table.add_column("Content")
+    table.add_column("Time", style="dim")
+
+    for r in results:
+        table.add_row(f"{r.relevance:.3f}", r.content[:80], r.timestamp[:19])
+    console.print(table)
+
+
+@memory.command("knowledge")
+@click.option("-q", "--query", default=None, help="Search query")
+@click.option("-n", "--limit", default=20, type=int)
+def memory_knowledge(query: str | None, limit: int) -> None:
+    """List or search the shared knowledge base."""
+    from kernel.memory_manager import get_memory_manager
+
+    mm = get_memory_manager()
+
+    if query:
+        entries = mm.query_knowledge(query, limit=limit)
+        title = f"🔍 Knowledge: {query}"
+    else:
+        entries = mm.get_all_knowledge(limit=limit)
+        title = "📚 Knowledge Base"
+
+    if not entries:
+        console.print("[dim]No knowledge entries found.[/dim]")
+        return
+
+    table = Table(title=title, border_style="cyan")
+    table.add_column("Topic", style="bold")
+    table.add_column("Content")
+    table.add_column("Source", style="dim")
+    table.add_column("Access", justify="right")
+
+    for k in entries:
+        table.add_row(k.topic, k.content[:60], k.source_agent, str(k.access_count))
+    console.print(table)
+
+
+@memory.command("stats")
+def memory_stats() -> None:
+    """Show memory and knowledge statistics."""
+    from kernel.memory_manager import get_memory_manager
+
+    mm = get_memory_manager()
+    stats = mm.get_stats()
+
+    console.print(Panel(
+        f"[bold]🧠 Memory Stats[/bold]\n\n"
+        f"  📝 Total Memories: {stats['total_memories']}\n"
+        f"  📚 Knowledge Entries: {stats['total_knowledge']}\n"
+        f"  🤖 Agents with Memory: {', '.join(stats['agents_with_memory']) or 'None'}",
+        border_style="magenta",
+    ))
+
+
 if __name__ == "__main__":
     main()
+
