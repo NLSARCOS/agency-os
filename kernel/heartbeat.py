@@ -105,17 +105,8 @@ class AgencyHeartbeat:
             f"Hustle: {self.config.hustle_interval_hours}h, "
             f"Evolve: {self.config.evolution_interval_hours}h]"
         )
-        
-        self._notifier.notify(
-            title=self._msg("activated_title"),
-            message=self._msg(
-                "activated_body",
-                hustle=self.config.hustle_interval_hours,
-                evolve=self.config.evolution_interval_hours,
-            ),
-            source="heartbeat",
-            priority=NotificationPriority.NORMAL,
-        )
+        # No Telegram notification on startup — work silently.
+        # Only notify when something meaningful happens.
 
         try:
             while self.is_running:
