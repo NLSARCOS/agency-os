@@ -406,6 +406,43 @@ class BrainOrchestrator:
             for t in self._history[-limit:]
         ]
 
+    # ── Project-Level Orchestration ──────────────────────────
+
+    def is_multi_studio_goal(self, task: str) -> bool:
+        """Detect if a task should be decomposed into a multi-studio project."""
+        task_lower = task.lower()
+        multi_signals = [
+            "and sell", "and launch", "and promote", "and market",
+            "full pipeline", "build and", "create and", "make and",
+            "end to end", "product launch", "go to market",
+            "lead gen", "abm campaign", "content campaign",
+        ]
+        return any(s in task_lower for s in multi_signals)
+
+    def orchestrate_project(
+        self,
+        goal: str,
+        template: str = "",
+        auto_git: bool = False,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Orchestrate a multi-studio project.
+
+        This decomposes the goal into phases and runs each studio in order.
+        """
+        from kernel.project_manager import get_project_manager
+        pm = get_project_manager()
+
+        project = pm.plan_and_execute(
+            goal=goal,
+            template=template,
+            auto_git=auto_git,
+            context=context,
+        )
+
+        return pm.get_project(project.id) or {"error": "Project not found"}
+
 
 _orchestrator: BrainOrchestrator | None = None
 
@@ -415,3 +452,4 @@ def get_orchestrator() -> BrainOrchestrator:
     if _orchestrator is None:
         _orchestrator = BrainOrchestrator()
     return _orchestrator
+
