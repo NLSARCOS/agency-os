@@ -16,3 +16,4 @@ reports/latest_report.md
 *.log
 .DS_Store
 node_modules/
+data/jobs.db

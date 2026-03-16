@@ -222,13 +222,13 @@ class CrewEngine:
         # Store in knowledge base for long-term learning
         outcome = "succeeded" if success else "failed"
         self.mm.learn(
-            agent_id="crew_engine",
             topic=f"Crew {crew.name} {outcome}",
             content=(
                 f"Task: {crew.task[:200]}\n"
                 f"Members: {', '.join(m.agent_id for m in crew.members)}\n"
                 f"Outcome: {outcome}\n{notes}"
             ),
+            source_agent="crew_engine",
         )
 
     def get_history(self, limit: int = 20) -> list[dict]:

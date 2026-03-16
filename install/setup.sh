@@ -2,15 +2,17 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────
-# Agency OS v3.0 — Auto-Setup & OpenClaw Connector
+# Agency OS v4.0 — Auto-Setup & Provider Connector
 #
 # This script:
 # 1. Validates system requirements (Python, Node, git, gh)
 # 2. Creates Python venv and installs dependencies
 # 3. Auto-detects OpenClaw installation
-# 4. Reads OpenClaw config (port, auth token, models)
-# 5. Generates .env with all connections ready
-# 6. Runs initial Agency OS setup
+# 4. Auto-detects Ollama (local models)
+# 5. Auto-detects LM Studio (local OpenAI-compatible)
+# 6. Reads configs and extracts API keys/models
+# 7. Generates .env with all connections ready
+# 8. Runs initial Agency OS setup
 #
 # Usage: bash install/setup.sh
 # ─────────────────────────────────────────────────────────
@@ -37,13 +39,13 @@ header(){ echo -e "\n${BOLD}$1${NC}"; echo "────────────
 # ── Banner ────────────────────────────────────────────────
 echo -e "${BOLD}"
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║     🏢 Agency OS v3.0 Setup          ║"
-echo "  ║     Auto-Connect & Bootstrap         ║"
+echo "  ║     🏢 Agency OS v4.0 Setup          ║"
+echo "  ║     Multi-Provider Auto-Connect      ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
 # ── 1. System Requirements ───────────────────────────────
-header "1/5  System Requirements"
+header "1/7  System Requirements"
 
 check_cmd() {
     if command -v "$1" &>/dev/null; then
@@ -73,7 +75,7 @@ if [ "$MISSING" -gt 0 ]; then
 fi
 
 # ── 2. Python Environment ────────────────────────────────
-header "2/5  Python Environment"
+header "2/7  Python Environment"
 
 cd "$PROJECT_ROOT"
 
@@ -96,7 +98,7 @@ pip install -q -e ".[dev]" 2>/dev/null || pip install -q -e . 2>/dev/null || {
 ok "Python dependencies ready"
 
 # ── 3. OpenClaw Detection ────────────────────────────────
-header "3/5  OpenClaw Detection"
+header "3/7  OpenClaw Detection"
 
 OPENCLAW_FOUND=false
 OPENCLAW_URL=""
@@ -183,8 +185,97 @@ else
     OPENCLAW_URL="http://localhost:3000"
 fi
 
-# ── 4. Generate .env ─────────────────────────────────────
-header "4/5  Environment Configuration"
+# ── 4. Ollama Detection ──────────────────────────────────
+header "4/7  Ollama Detection (Local Models)"
+
+OLLAMA_FOUND=false
+OLLAMA_HOST="http://localhost:11434"
+OLLAMA_MODELS=""
+
+if command -v ollama &>/dev/null; then
+    OLLAMA_VER=$(ollama --version 2>&1 | head -1)
+    ok "Ollama installed → $OLLAMA_VER"
+    OLLAMA_FOUND=true
+
+    # Check custom host
+    if [ -n "${OLLAMA_HOST_ENV:-}" ]; then
+        OLLAMA_HOST="$OLLAMA_HOST_ENV"
+    fi
+
+    # Check if running
+    if curl -s --max-time 3 "$OLLAMA_HOST/api/tags" &>/dev/null; then
+        ok "Ollama server RUNNING on $OLLAMA_HOST"
+
+        # Get models
+        OLLAMA_MODELS=$(python3 -c "
+import urllib.request, json
+try:
+    resp = urllib.request.urlopen('$OLLAMA_HOST/api/tags', timeout=3)
+    data = json.loads(resp.read())
+    models = [m['name'] for m in data.get('models', [])]
+    print(', '.join(models[:8]))
+except: print('none')
+" 2>/dev/null || echo "none")
+        info "Models available → $OLLAMA_MODELS"
+    else
+        warn "Ollama installed but server not running"
+        info "Start with: ollama serve"
+    fi
+else
+    warn "Ollama not installed (optional, for local models)"
+    info "Install with: curl -fsSL https://ollama.com/install.sh | sh"
+fi
+
+# ── 5. LM Studio Detection ──────────────────────────────
+header "5/7  LM Studio Detection"
+
+LMSTUDIO_FOUND=false
+LMSTUDIO_URL="http://localhost:1234"
+LMSTUDIO_MODELS=""
+
+# Check lms CLI
+if command -v lms &>/dev/null; then
+    LMSTUDIO_VER=$(lms version 2>&1 | head -1)
+    ok "LM Studio CLI → $LMSTUDIO_VER"
+    LMSTUDIO_FOUND=true
+fi
+
+# Check common install paths
+for lms_path in "$HOME/.cache/lm-studio" "$HOME/lm-studio" "$HOME/.lmstudio"; do
+    if [ -d "$lms_path" ]; then
+        ok "LM Studio found → $lms_path"
+        LMSTUDIO_FOUND=true
+        break
+    fi
+done
+
+# Check if API server is running (OpenAI-compatible)
+if curl -s --max-time 3 "$LMSTUDIO_URL/v1/models" &>/dev/null; then
+    ok "LM Studio API RUNNING on $LMSTUDIO_URL"
+    LMSTUDIO_FOUND=true
+
+    LMSTUDIO_MODELS=$(python3 -c "
+import urllib.request, json
+try:
+    resp = urllib.request.urlopen('$LMSTUDIO_URL/v1/models', timeout=3)
+    data = json.loads(resp.read())
+    models = [m['id'] for m in data.get('data', [])]
+    print(', '.join(models[:8]))
+except: print('none')
+" 2>/dev/null || echo "none")
+    info "Models available → $LMSTUDIO_MODELS"
+else
+    if [ "$LMSTUDIO_FOUND" = false ]; then
+        warn "LM Studio not detected (optional)"
+        info "Download from: https://lmstudio.ai"
+    else
+        warn "LM Studio installed but API server not running"
+        info "Start the server from LM Studio → Local Server tab"
+    fi
+fi
+
+# ── 6. Generate .env ─────────────────────────────────────
+header "6/7  Environment Configuration"
 
 if [ -f "$ENV_FILE" ]; then
     warn ".env already exists → backing up to .env.bak"
@@ -225,15 +316,23 @@ if key and key != '__OPENCLAW_REDACTED__':
     fi
 fi
 
-cat > "$ENV_FILE" << EOF
-# Agency OS v3.0 — Auto-generated by setup.sh
+cat > "$ENV_FILE" <<EOF
+# Agency OS v4.0 — Auto-generated by setup.sh
 # Generated: $(date -u '+%Y-%m-%d %H:%M UTC')
 
 # ── OpenClaw Gateway (Auto-detected) ────────────────────
 OPENCLAW_URL=${OPENCLAW_URL}
 OPENCLAW_API_KEY=${OPENCLAW_API_KEY}
 
-# ── AI Providers (Fallback when OpenClaw is offline) ─────
+# ── Ollama (Local Models — Auto-detected) ───────────────
+OLLAMA_HOST=${OLLAMA_HOST}
+OLLAMA_DEFAULT_MODEL=${OLLAMA_MODELS%%,*}
+
+# ── LM Studio (Local OpenAI-compatible — Auto-detected) ─
+LM_STUDIO_URL=${LMSTUDIO_URL}
+LM_STUDIO_DEFAULT_MODEL=${LMSTUDIO_MODELS%%,*}
+
+# ── Cloud AI Providers (Fallback) ──────────────────────
 OPENROUTER_API_KEY=${EXISTING_OPENROUTER}
 OPENAI_API_KEY=${EXISTING_OPENAI}
 ANTHROPIC_API_KEY=${EXISTING_ANTHROPIC}
@@ -249,12 +348,13 @@ AGENCY_OS_ROOT=${PROJECT_ROOT}
 AGENCY_OS_LOG_LEVEL=INFO
 EOF
 
-ok ".env generated with OpenClaw connection"
+ok ".env generated with all provider connections"
 info "  OPENCLAW_URL=$OPENCLAW_URL"
-info "  OPENCLAW_API_KEY=${OPENCLAW_API_KEY:0:8}..."
+info "  OLLAMA_HOST=$OLLAMA_HOST"
+info "  LM_STUDIO_URL=$LMSTUDIO_URL"
 
-# ── 5. Verify Installation ──────────────────────────────
-header "5/5  Verification"
+# ── 7. Verify Installation ──────────────────────────────
+header "7/7  Verification"
 
 info "Testing Agency OS..."
 
@@ -277,6 +377,17 @@ oc = get_openclaw()
 status = oc.get_status()
 print(f'  OpenClaw: {\"CONNECTED\" if status[\"available\"] else \"offline (fallback mode)\"}')
 print(f'  Gateway URL: {status[\"gateway_url\"]}')
+
+from kernel.provider_detector import get_provider_detector
+pd = get_provider_detector()
+summary = pd.detect_all()
+local_running = sum(1 for s in summary.values() if s.running and s.name in ('openclaw','ollama','lmstudio'))
+cloud_configured = sum(1 for s in summary.values() if s.installed and s.name not in ('openclaw','ollama','lmstudio'))
+print(f'  Providers: {local_running} local running, {cloud_configured} cloud configured')
+for name, s in summary.items():
+    if s.installed or s.running:
+        emoji = '🟢' if s.running else '🟡'
+        print(f'    {emoji} {name}: {len(s.models)} models')
 " 2>&1 | while IFS= read -r line; do
     ok "$line"
 done
@@ -284,19 +395,34 @@ done
 # ── Done ─────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
-echo -e "${BOLD}${GREEN}  🎉 Agency OS v3.0 Ready!${NC}"
+echo -e "${BOLD}${GREEN}  🎉 Agency OS v4.0 Ready!${NC}"
 echo -e "${BOLD}${GREEN}══════════════════════════════════════${NC}"
 echo ""
 echo -e "  ${CYAN}Run:${NC}     source .venv/bin/activate && agency-os status"
 echo -e "  ${CYAN}Studios:${NC} agency-os mission add dev 'Build feature X'"
 echo -e "  ${CYAN}Auto:${NC}    agency-os auto discover"
+echo -e "  ${CYAN}API:${NC}     agency-os serve --port 8080"
 echo ""
 
+# Provider status summary
 if [ "$OPENCLAW_FOUND" = true ]; then
     echo -e "  ${GREEN}🐙 OpenClaw connected on port $OPENCLAW_PORT${NC}"
     echo -e "  ${CYAN}Channels:${NC} $CHANNELS"
 else
     echo -e "  ${YELLOW}⚠️  OpenClaw not found — using direct API fallback${NC}"
     echo -e "  ${CYAN}Install:${NC} curl -fsSL https://openclaw.ai/install | bash"
+fi
+
+if [ "$OLLAMA_FOUND" = true ]; then
+    echo -e "  ${GREEN}🦙 Ollama connected → $OLLAMA_MODELS${NC}"
+fi
+
+if [ "$LMSTUDIO_FOUND" = true ]; then
+    echo -e "  ${GREEN}🖥️  LM Studio connected → $LMSTUDIO_MODELS${NC}"
+fi
+
+if [ "$OLLAMA_FOUND" = false ] && [ "$LMSTUDIO_FOUND" = false ] && [ "$OPENCLAW_FOUND" = false ]; then
+    echo -e "  ${YELLOW}⚠️  No local providers found — using cloud APIs only${NC}"
+    echo -e "  ${CYAN}Try:${NC} curl -fsSL https://ollama.com/install.sh | sh"
 fi
 echo ""
