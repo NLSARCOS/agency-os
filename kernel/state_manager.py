@@ -268,6 +268,32 @@ class StateManager:
                 return dict(row)
         return None
 
+    def promote_next_per_studio(self) -> list[dict]:
+        """Promote one queued mission per studio for parallel execution."""
+        with self._lock:
+            # Get distinct studios with queued missions
+            studios = self._conn.execute(
+                "SELECT DISTINCT studio FROM missions WHERE status = 'queued'"
+            ).fetchall()
+
+            promoted = []
+            for (studio,) in studios:
+                row = self._conn.execute(
+                    "SELECT * FROM missions WHERE status = 'queued' AND studio = ? "
+                    "ORDER BY priority ASC, created_at ASC LIMIT 1",
+                    (studio,),
+                ).fetchone()
+                if row:
+                    self._conn.execute(
+                        "UPDATE missions SET status = 'active', updated_at = ? WHERE id = ?",
+                        (_now(), row["id"]),
+                    )
+                    promoted.append(dict(row))
+
+            if promoted:
+                self._conn.commit()
+            return promoted
+
     # ── Tasks ─────────────────────────────────────────────────
 
     def create_task(

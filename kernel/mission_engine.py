@@ -10,6 +10,7 @@ Inspired by LangGraph state machines + CrewAI crew patterns.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -431,7 +432,7 @@ class MissionEngine:
     # ── Cycle ─────────────────────────────────────────────────
 
     def run_cycle(self) -> dict[str, Any]:
-        """Run one mission processing cycle."""
+        """Run one mission processing cycle (single mission)."""
         promoted = self.state.promote_next_mission()
         if not promoted:
             return {"action": "idle", "message": "No missions to process"}
@@ -439,6 +440,59 @@ class MissionEngine:
         mission_id = promoted["id"]
         result = self.execute_mission(mission_id)
         return {"action": "executed", "mission_id": mission_id, **result}
+
+    async def run_parallel_cycle(self) -> dict[str, Any]:
+        """Run missions from ALL studios in parallel — one per studio simultaneously."""
+        promoted = self.state.promote_next_per_studio()
+        if not promoted:
+            return {"action": "idle", "studios": 0, "message": "No missions queued"}
+
+        studios_active = [m["studio"] for m in promoted]
+        logger.info(
+            "🚀 Parallel cycle: %d studios active — %s",
+            len(promoted), ", ".join(studios_active),
+        )
+
+        # Execute all missions concurrently (each studio uses its own model)
+        loop = asyncio.get_event_loop()
+        tasks = [
+            loop.run_in_executor(None, self.execute_mission, m["id"])
+            for m in promoted
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect results
+        cycle_results = {}
+        for mission, result in zip(promoted, results):
+            studio = mission["studio"]
+            if isinstance(result, Exception):
+                logger.error("Studio %s failed: %s", studio, result)
+                cycle_results[studio] = {
+                    "success": False, "error": str(result),
+                    "mission_id": mission["id"],
+                }
+            else:
+                cycle_results[studio] = result
+
+        succeeded = sum(1 for r in cycle_results.values() if r.get("success"))
+        logger.info(
+            "Parallel cycle done: %d/%d studios succeeded",
+            succeeded, len(cycle_results),
+        )
+
+        self.state.log_event(
+            "parallel_cycle",
+            f"Executed {len(promoted)} missions in parallel: "
+            f"{', '.join(studios_active)} — {succeeded}/{len(promoted)} OK",
+            source="mission_engine",
+        )
+
+        return {
+            "action": "parallel",
+            "studios": len(promoted),
+            "succeeded": succeeded,
+            "results": cycle_results,
+        }
 
     # ── Status ────────────────────────────────────────────────
 

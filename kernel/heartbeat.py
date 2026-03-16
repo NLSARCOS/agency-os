@@ -165,6 +165,9 @@ class AgencyHeartbeat:
             await self._run_evolution_cycle()
             self.last_evolution = time.time()
             self._save_timestamp("last_evolution", self.last_evolution)
+
+        # 3. Process missions in parallel (one per studio, concurrent execution)
+        await self._run_mission_cycle()
             
     async def _run_hustle_cycle(self) -> None:
         logger.info("Heartbeat: Triggering Hustle Cycle...")
@@ -191,6 +194,24 @@ class AgencyHeartbeat:
             self._evolution.evolve()
         except Exception as e:
             logger.error(f"Evolution cycle failed: {e}")
+
+    async def _run_mission_cycle(self) -> None:
+        """Process queued missions — one per studio in parallel."""
+        try:
+            if not hasattr(self, "_mission_engine"):
+                from kernel.mission_engine import MissionEngine
+                self._mission_engine = MissionEngine()
+                self._mission_engine.auto_discover_studios()
+
+            result = await self._mission_engine.run_parallel_cycle()
+            if result.get("action") != "idle":
+                studios = result.get("studios", 0)
+                succeeded = result.get("succeeded", 0)
+                logger.info(
+                    "Mission cycle: %d studios, %d succeeded", studios, succeeded
+                )
+        except Exception as e:
+            logger.error(f"Mission cycle failed: {e}")
 
 
 _heartbeat: AgencyHeartbeat | None = None
