@@ -175,10 +175,10 @@ print(', '.join(models[:8]))
         if [ "$TEST_HTTP_CODE" = "200" ]; then
             ok "Gateway AI Models are RESPONDING properly"
         elif [ "$TEST_HTTP_CODE" = "404" ]; then
-            warn "Gateway returned HTTP 404. Your primary model in openclaw.json is likely offline or invalid."
-            info "Fix: Edit ~/.openclaw/openclaw.json -> agents.defaults.model.primary"
+            info "Gateway is WebSocket-only (no REST /v1/chat/completions) — this is NORMAL"
+            info "Agency OS will auto-route via 'openclaw agent' CLI or direct API fallback"
         else
-            warn "Gateway AI Models failed test (HTTP $TEST_HTTP_CODE). Check your provider keys in openclaw.json."
+            warn "Gateway AI Models test returned HTTP $TEST_HTTP_CODE. Check your provider keys in openclaw.json."
         fi
         
     else
@@ -205,16 +205,27 @@ token = cfg.get('channels', {}).get('telegram', {}).get('botToken', '')
 print(token)
 " 2>/dev/null || echo "")
 
-    OPENCLAW_TG_CHAT=$(python3 -c "
-import json
-with open('$OPENCLAW_CONFIG') as f:
-    cfg = json.load(f)
-chat = cfg.get('channels', {}).get('telegram', {}).get('adminChatId', '')
-print(chat)
+    # Try to extract Telegram chat ID from OpenClaw sessions (where real user data lives)
+    OPENCLAW_SESSIONS="$HOME/.openclaw/agents/main/sessions/sessions.json"
+    OPENCLAW_TG_CHAT=""
+    if [ -f "$OPENCLAW_SESSIONS" ]; then
+        OPENCLAW_TG_CHAT=$(python3 -c "
+import json, re
+with open('$OPENCLAW_SESSIONS') as f:
+    data = json.load(f)
+for key in data:
+    m = re.search(r'telegram:direct:(\d+)', key)
+    if m:
+        print(m.group(1))
+        break
 " 2>/dev/null || echo "")
+    fi
 
     if [ -n "$OPENCLAW_TG_TOKEN" ] && [ -n "$OPENCLAW_TG_CHAT" ]; then
-        ok "Extracted Telegram config from OpenClaw for proactive messaging"
+        ok "Extracted Telegram bot token + chat ID from OpenClaw"
+    elif [ -n "$OPENCLAW_TG_TOKEN" ]; then
+        ok "Extracted Telegram bot token from OpenClaw"
+        info "Chat ID not found yet — send a message to your bot, then re-run setup"
     fi
 
 else
@@ -393,6 +404,21 @@ AGENCY_WEBHOOK_URL=${EXISTING_WEBHOOK}
 # ── Telegram (Bidirectional: Owner ↔ Agency) ────────────
 TELEGRAM_BOT_TOKEN=${FINAL_TG_TOKEN}
 TELEGRAM_CHAT_ID=${FINAL_TG_CHAT}
+
+# ── Deployments (Multi-Provider) ────────────────────────
+# Contabo / Custom VPS
+DEPLOY_VPS_USER=
+DEPLOY_VPS_HOST=
+DEPLOY_VPS_KEY_PATH=
+
+# Serverless & Frontend Platforms
+VERCEL_TOKEN=
+NETLIFY_AUTH_TOKEN=
+
+# AWS / Cloud
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=
 
 # ── Settings ────────────────────────────────────────────
 AGENCY_OS_ROOT=${PROJECT_ROOT}
