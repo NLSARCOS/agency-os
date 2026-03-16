@@ -423,6 +423,7 @@ AWS_REGION=
 # ── Settings ────────────────────────────────────────────
 AGENCY_OS_ROOT=${PROJECT_ROOT}
 AGENCY_OS_LOG_LEVEL=INFO
+AGENCY_LANGUAGE=en
 EOF
 
 ok ".env generated with all provider connections"

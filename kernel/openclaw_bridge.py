@@ -232,6 +232,14 @@ class OpenClawBridge:
         agent_id: str = "",
     ) -> str:
         """Simple ask → answer shortcut."""
+        # Inject configured language into system prompt
+        cfg = get_config()
+        lang = cfg.language_instruction
+        if lang and system:
+            system = f"{system}\n{lang}"
+        elif lang:
+            system = lang
+
         resp = self.chat(
             messages=[ChatMessage(role="user", content=prompt)],
             system=system,

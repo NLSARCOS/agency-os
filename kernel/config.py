@@ -95,6 +95,23 @@ class Config:
             "abm", "analytics", "creative",
         ]
 
+        # Response language (e.g. 'en', 'es', 'pt', 'fr')
+        self.language = os.getenv("AGENCY_LANGUAGE", "en").strip().lower()
+
+    @property
+    def language_instruction(self) -> str:
+        """System prompt fragment to enforce response language."""
+        lang_names = {
+            "en": "English", "es": "Spanish", "pt": "Portuguese",
+            "fr": "French", "de": "German", "it": "Italian",
+            "zh": "Chinese", "ja": "Japanese", "ko": "Korean",
+            "ar": "Arabic", "ru": "Russian", "tr": "Turkish",
+        }
+        name = lang_names.get(self.language, self.language)
+        if self.language == "en":
+            return ""
+        return f"IMPORTANT: Always respond in {name} ({self.language})."
+
     def _load_yaml(self, filename: str) -> dict[str, Any]:
         path = self.configs_dir / filename
         if path.exists():
