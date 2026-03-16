@@ -54,6 +54,7 @@ class NotificationChannel(str, Enum):
     WEBHOOK = "webhook"
     FILE = "file"
     OPENCLAW = "openclaw"
+    TELEGRAM = "telegram"
     EVENT = "event"
 
 
@@ -98,6 +99,9 @@ class Notifier:
             "console": True,  # Always available
             "file": True,     # Always available
             "event": True,    # Always available
+            "telegram": bool(
+                os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")
+            ),
             "webhook": bool(self._webhook_url),
             "openclaw": bool(os.getenv("OPENCLAW_URL")),
         }
@@ -158,6 +162,8 @@ class Notifier:
                     self._send_console(notif)
                 elif ch == "file":
                     self._send_file(notif)
+                elif ch == "telegram":
+                    self._send_telegram(notif)
                 elif ch == "webhook":
                     self._send_webhook(notif)
                 elif ch == "openclaw":
@@ -252,6 +258,30 @@ class Notifier:
                 )
         except Exception as e:
             logger.debug("OpenClaw notification failed: %s", e)
+
+    def _send_telegram(self, notif: Notification) -> None:
+        """Push directly to owner's Telegram via Bot API."""
+        try:
+            from kernel.openclaw_bridge import get_openclaw
+            oc = get_openclaw()
+
+            icons = {
+                NotificationPriority.LOW: "ℹ️",
+                NotificationPriority.NORMAL: "📢",
+                NotificationPriority.HIGH: "🔔",
+                NotificationPriority.URGENT: "🚨",
+            }
+            icon = icons.get(notif.priority, "📢")
+
+            text = (
+                f"{icon} *{notif.title}*\n\n"
+                f"{notif.message}\n\n"
+                f"_Source: {notif.source} | {notif.priority.value}_"
+            )
+
+            oc.send_telegram(text)
+        except Exception as e:
+            logger.debug("Telegram push failed: %s", e)
 
     def _send_event(self, notif: Notification) -> None:
         """Publish to internal event bus."""

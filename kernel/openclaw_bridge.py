@@ -296,14 +296,135 @@ class OpenClawBridge:
             error=resp.error,
         )
 
+    # ── Proactive Messaging (Agency → Owner) ─────────────────
+
+    def send_telegram(
+        self,
+        message: str,
+        chat_id: str = "",
+        parse_mode: str = "Markdown",
+    ) -> bool:
+        """
+        Send a proactive message to the owner via Telegram Bot API.
+
+        This is how the agency reaches out when it needs something:
+        - "Found 5 opportunities, need your approval"
+        - "Website built, pushed to GitHub"
+        - "I improved myself, here's the PR"
+
+        Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
+        """
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        target_chat = chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+
+        if not bot_token or not target_chat:
+            logger.debug("Telegram not configured (no token or chat_id)")
+            return False
+
+        try:
+            resp = self._client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": target_chat,
+                    "text": message,
+                    "parse_mode": parse_mode,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                logger.info("Telegram message sent to %s", target_chat)
+                return True
+            else:
+                logger.warning("Telegram failed: %s", resp.text[:200])
+                return False
+        except Exception as e:
+            logger.error("Telegram send error: %s", e)
+            return False
+
+    def send_to_channel(
+        self,
+        channel: str,
+        message: str,
+    ) -> bool:
+        """
+        Send a proactive message through a specific channel.
+
+        Supported channels:
+        - telegram: Direct Telegram Bot API push
+        - openclaw: Send via OpenClaw gateway (if it has /v1/messages endpoint)
+        - webhook: POST to configured webhook URL
+        """
+        if channel == "telegram":
+            return self.send_telegram(message)
+
+        elif channel == "openclaw":
+            # Try OpenClaw messaging endpoint
+            try:
+                headers = {"Content-Type": "application/json"}
+                if self._config.api_key:
+                    headers["Authorization"] = f"Bearer {self._config.api_key}"
+
+                resp = self._client.post(
+                    f"{self._config.gateway_url}/v1/messages",
+                    headers=headers,
+                    json={
+                        "content": message,
+                        "source": "agency-os",
+                        "channel": "owner",
+                    },
+                    timeout=10,
+                )
+                return resp.status_code in (200, 201)
+            except Exception as e:
+                logger.debug("OpenClaw messaging failed: %s", e)
+                # Fallback: try Telegram
+                return self.send_telegram(message)
+
+        elif channel == "webhook":
+            webhook_url = os.environ.get("AGENCY_WEBHOOK_URL", "")
+            if not webhook_url:
+                return False
+            try:
+                resp = self._client.post(
+                    webhook_url,
+                    json={"text": message, "source": "agency-os"},
+                    timeout=10,
+                )
+                return resp.status_code in (200, 201, 204)
+            except Exception as e:
+                logger.debug("Webhook failed: %s", e)
+                return False
+
+        return False
+
+    def notify_owner(self, message: str) -> bool:
+        """
+        Send a message to the owner through the BEST available channel.
+
+        Priority order:
+        1. Telegram (direct, real-time, always works)
+        2. OpenClaw messaging (if available)
+        3. Webhook (Slack/Discord)
+        """
+        # Try channels in priority order
+        for channel in ["telegram", "openclaw", "webhook"]:
+            if self.send_to_channel(channel, message):
+                return True
+        return False
+
     # ── Status ────────────────────────────────────────────────
 
     def get_status(self) -> dict:
+        telegram_ok = bool(
+            os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")
+        )
         return {
             "gateway_url": self._config.gateway_url,
             "available": self.is_available(),
             "active_sessions": len(self._sessions),
             "sessions": dict(self._sessions),
+            "telegram_configured": telegram_ok,
+            "webhook_configured": bool(os.environ.get("AGENCY_WEBHOOK_URL")),
         }
 
     def close(self) -> None:
