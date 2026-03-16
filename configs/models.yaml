@@ -1,7 +1,6 @@
-# Agency OS — Model Pools Configuration
-# Each studio (department) has an ordered list of models.
-# The router tries them in order, falling back to the next on failure.
-# Tier: free = OpenRouter free models, premium = paid API keys required.
+# ── Agency OS Model Pools ───────────────────────────────
+# Best free models from OpenRouter (live-verified 2026-03-16)
+# Fallback order: first model tried first, then next, etc.
 
 pools:
   leadops:
