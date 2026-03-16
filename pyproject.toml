@@ -24,6 +24,7 @@ dev = ["pytest>=8.0", "pytest-cov"]
 
 [project.scripts]
 agency-os = "kernel.cli:main"
+agency = "kernel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
