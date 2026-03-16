@@ -463,7 +463,28 @@ ENTRY
         done
     fi
 
-    # 2. OpenRouter free models (always available with free key)
+    # 2. OpenClaw models (uses OAuth, no API key cost)
+    if [ "$OPENCLAW_FOUND" = true ]; then
+        OPENCLAW_MODELS=$(python3 -c "
+import json
+try:
+    cfg = json.load(open('$HOME/.openclaw/openclaw.json'))
+    for prov in cfg.get('models',{}).get('providers',{}).values():
+        for m in prov.get('models',[]):
+            print(m['id'])
+except: pass
+" 2>/dev/null)
+        if [ -n "$OPENCLAW_MODELS" ]; then
+            while IFS= read -r m; do
+                [ -z "$m" ] && continue
+                cat >> "$MODELS_FILE" <<ENTRY
+    - name: "$m"
+      provider: openclaw
+      tier: openclaw
+ENTRY
+            done <<< "$OPENCLAW_MODELS"
+        fi
+    fi
     if [ -n "$EXISTING_OPENROUTER" ]; then
         cat >> "$MODELS_FILE" <<'ENTRY'
     - name: openrouter/openrouter/hunter-alpha

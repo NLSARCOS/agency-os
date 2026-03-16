@@ -2,12 +2,13 @@
 """
 Agency OS — Multi-Model Router
 
-Intelligent routing across multiple AI providers with automatic fallback,
-latency tracking, cost estimation, and health monitoring.
+Multi-provider model router with health tracking and auto-fallback.
 """
 from __future__ import annotations
 
+import json as json_lib
 import logging
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -55,12 +56,12 @@ DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     ],
 }
 
-# Provider API configs
 PROVIDER_ENDPOINTS: dict[str, str] = {
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
     "openai": "https://api.openai.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "ollama": "http://localhost:11434/api/chat",
+    "openclaw": "cli",  # Uses openclaw CLI, not HTTP
 }
 
 PROVIDER_KEY_MAP: dict[str, str] = {
@@ -68,6 +69,7 @@ PROVIDER_KEY_MAP: dict[str, str] = {
     "openai": "openai",
     "anthropic": "anthropic",
     "ollama": "",  # No key needed
+    "openclaw": "",  # Uses OAuth, no key needed
 }
 
 
@@ -211,8 +213,8 @@ class ModelRouter:
         model_name = model_cfg["name"]
         start = time.monotonic()
 
-        # Guard: skip providers with no API key (except ollama which needs none)
-        if provider != "ollama":
+        # Guard: skip providers with no API key (except ollama/openclaw which need none)
+        if provider not in ("ollama", "openclaw"):
             key_name = PROVIDER_KEY_MAP.get(provider, provider)
             api_key = self._cfg.api_keys.get(key_name, "")
             if not api_key:
@@ -222,6 +224,8 @@ class ModelRouter:
             return self._call_anthropic(model_name, prompt, system, start)
         elif provider == "ollama":
             return self._call_ollama(model_name, prompt, system, start)
+        elif provider == "openclaw":
+            return self._call_openclaw(model_name, prompt, system, start)
         else:
             return self._call_openai_compatible(model_name, provider, prompt, system, start)
 
@@ -328,6 +332,34 @@ class ModelRouter:
             provider="ollama",
             latency_ms=latency,
         )
+
+    def _call_openclaw(
+        self, model: str, prompt: str, system: str, start: float
+    ) -> ModelResponse:
+        """Call a model through OpenClaw CLI (supports OAuth models like Codex, GPT-5.4)."""
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+        try:
+            result = subprocess.run(
+                ["openclaw", "agent", "--json", "--model", model, "--message", full_prompt],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"openclaw agent failed: {result.stderr[:200]}")
+
+            data = json_lib.loads(result.stdout)
+            content = data.get("response", data.get("content", data.get("message", "")))
+            latency = (time.monotonic() - start) * 1000
+
+            return ModelResponse(
+                content=content,
+                model=model,
+                provider="openclaw",
+                latency_ms=latency,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"openclaw agent timed out for model {model}")
+        except json_lib.JSONDecodeError:
+            raise RuntimeError(f"openclaw agent returned invalid JSON for model {model}")
 
     def _update_health(self, model: str, success: bool, error: str = "") -> None:
         if model not in self.health:
