@@ -442,7 +442,11 @@ class MissionEngine:
         return {"action": "executed", "mission_id": mission_id, **result}
 
     async def run_parallel_cycle(self) -> dict[str, Any]:
-        """Run missions from ALL studios in parallel — one per studio simultaneously."""
+        """Run missions from ALL studios in parallel — one per studio simultaneously.
+
+        After execution, injects results as context into dependent missions
+        (wave handoff: DEV output → MARKETING input → SALES input).
+        """
         promoted = self.state.promote_next_per_studio()
         if not promoted:
             return {"action": "idle", "studios": 0, "message": "No missions queued"}
@@ -474,6 +478,13 @@ class MissionEngine:
             else:
                 cycle_results[studio] = result
 
+        # ── Wave Handoff: inject results into dependent missions ──
+        completed_studios = [
+            s for s, r in cycle_results.items() if r.get("success")
+        ]
+        if completed_studios:
+            self._inject_wave_context(completed_studios, cycle_results)
+
         succeeded = sum(1 for r in cycle_results.values() if r.get("success"))
         logger.info(
             "Parallel cycle done: %d/%d studios succeeded",
@@ -493,6 +504,60 @@ class MissionEngine:
             "succeeded": succeeded,
             "results": cycle_results,
         }
+
+    def _inject_wave_context(
+        self, completed_studios: list[str], results: dict[str, dict]
+    ) -> None:
+        """Inject completed studio results into queued missions that depend on them."""
+        # Find queued missions with planner metadata that depend on completed studios
+        with self.state._lock:
+            rows = self.state._conn.execute(
+                "SELECT id, description, metadata FROM missions WHERE status = 'queued'"
+            ).fetchall()
+
+        for row in rows:
+            try:
+                meta = json.loads(row["metadata"]) if row["metadata"] else {}
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+
+            depends_on = meta.get("depends_on", [])
+            if not depends_on:
+                continue
+
+            # Check if any dependency was just completed
+            newly_resolved = [d for d in depends_on if d in completed_studios]
+            if not newly_resolved:
+                continue
+
+            # Build context from completed studios
+            context_parts = []
+            for studio in newly_resolved:
+                r = results.get(studio, {})
+                steps = r.get("steps", {})
+                # Grab the execute step content (the main deliverable)
+                for step_name, step_data in steps.items():
+                    content = step_data.get("content", "")
+                    if content:
+                        context_parts.append(
+                            f"[Output from {studio.upper()}] {content[:800]}"
+                        )
+
+            if context_parts:
+                context_block = "\n\n--- Previous Studio Results ---\n" + "\n\n".join(context_parts)
+                new_desc = row["description"] + context_block
+
+                with self.state._lock:
+                    self.state._conn.execute(
+                        "UPDATE missions SET description = ? WHERE id = ?",
+                        (new_desc[:5000], row["id"]),
+                    )
+                    self.state._conn.commit()
+
+                logger.info(
+                    "Wave handoff: injected %s context into mission #%d",
+                    ", ".join(newly_resolved), row["id"],
+                )
 
     # ── Status ────────────────────────────────────────────────
 

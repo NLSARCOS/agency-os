@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from kernel.config import get_config
 from kernel.event_bus import Event, EventBus, get_event_bus
+from kernel.model_router import ModelRouter
 from kernel.openclaw_bridge import ChatMessage, OpenClawBridge, get_openclaw
 from kernel.tool_executor import ToolExecutor, ToolResult, get_tool_executor
 
@@ -84,6 +85,7 @@ class AgentManager:
         self._agents: dict[str, AgentProfile] = {}
         self._delegations: list[DelegationRequest] = []
         self._openclaw: OpenClawBridge | None = None
+        self._model_router: ModelRouter | None = None
         self._tools: ToolExecutor | None = None
         self._bus: EventBus | None = None
         self._skill_cache: dict[str, str] = {}
@@ -92,6 +94,11 @@ class AgentManager:
         if self._openclaw is None:
             self._openclaw = get_openclaw()
         return self._openclaw
+
+    def _get_model_router(self) -> ModelRouter:
+        if self._model_router is None:
+            self._model_router = ModelRouter()
+        return self._model_router
 
     def _get_tools(self) -> ToolExecutor:
         if self._tools is None:
@@ -234,6 +241,7 @@ class AgentManager:
         task: str,
         context: str = "",
         tools_enabled: bool = True,
+        studio: str = "",
     ) -> dict[str, Any]:
         """
         Execute a task using a specific agent.
@@ -241,7 +249,7 @@ class AgentManager:
         Flow:
         1. Load agent profile + skills
         2. Build system prompt
-        3. Call LLM via OpenClaw
+        3. Call LLM via ModelRouter (codex/ollama/openrouter based on studio)
         4. Parse tool calls if any
         5. Execute tools
         6. Return result
@@ -261,7 +269,6 @@ class AgentManager:
             user_msg = f"Context:\n{context}\n\nTask:\n{task}"
 
         # Add recent memory for context continuity
-        memory_context = ""
         if agent.memory:
             recent = agent.memory[-3:]
             memory_context = "\n".join(
@@ -271,43 +278,59 @@ class AgentManager:
             if memory_context:
                 user_msg = f"Recent context:\n{memory_context}\n\n{user_msg}"
 
-        # Build tool definitions for function calling
-        tool_defs = None
-        if tools_enabled:
-            tool_defs = self._build_tool_defs(agent_id)
+        # Determine studio for model selection
+        target_studio = studio or self._studio_for_agent(agent_id) or "dev"
 
-        # Call LLM
-        oc = self._get_openclaw()
-        response = oc.chat(
-            messages=[ChatMessage(role="user", content=user_msg)],
-            system=system_prompt,
-            agent_id=agent_id,
-            tools=tool_defs,
-            model=agent.model if agent.model != "inherit" else "",
-        )
+        # Call LLM via ModelRouter (multi-provider with automatic fallback)
+        import asyncio
+        router = self._get_model_router()
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    resp = pool.submit(
+                        asyncio.run,
+                        router.call_model(target_studio, user_msg, system_prompt)
+                    ).result()
+            else:
+                resp = asyncio.run(
+                    router.call_model(target_studio, user_msg, system_prompt)
+                )
 
-        if not response.success:
-            agent.stats["tasks_failed"] += 1
-            agent.active = False
-            return {
-                "success": False,
-                "error": response.error,
-                "agent": agent_id,
-            }
+            content = resp.content
+            model_used = resp.model
+            provider_used = resp.provider
+            latency = resp.latency_ms
 
-        # Handle tool calls if present
-        tool_results = []
-        if response.tool_calls:
-            tool_results = self._execute_tool_calls(
-                agent_id, response.tool_calls
+        except Exception as model_err:
+            # Fallback to OpenClaw bridge if ModelRouter fails entirely
+            logger.warning(
+                "ModelRouter failed for %s/%s, falling back to OpenClaw: %s",
+                target_studio, agent_id, model_err,
             )
+            oc = self._get_openclaw()
+            response = oc.chat(
+                messages=[ChatMessage(role="user", content=user_msg)],
+                system=system_prompt,
+                agent_id=agent_id,
+                model=agent.model if agent.model != "inherit" else "",
+            )
+            if not response.success:
+                agent.stats["tasks_failed"] += 1
+                agent.active = False
+                return {"success": False, "error": response.error, "agent": agent_id}
+
+            content = response.content
+            model_used = response.model
+            provider_used = "openclaw-fallback"
+            latency = (time.monotonic() - start) * 1000
 
         # Update memory
-        self._update_memory(agent, task, response.content)
+        self._update_memory(agent, task, content)
 
         # Update stats
         agent.stats["tasks_completed"] += 1
-        agent.stats["tokens_total"] += response.tokens_in + response.tokens_out
         agent.active = False
 
         duration = (time.monotonic() - start) * 1000
@@ -319,8 +342,9 @@ class AgentManager:
             payload={
                 "agent": agent_id, "task": task[:100],
                 "duration_ms": duration,
-                "model": response.model,
-                "tools_used": len(tool_results),
+                "model": model_used,
+                "provider": provider_used,
+                "studio": target_studio,
             },
             source=agent_id,
         ))
@@ -328,15 +352,24 @@ class AgentManager:
         return {
             "success": True,
             "agent": agent_id,
-            "content": response.content,
-            "model": response.model,
-            "tokens": response.tokens_in + response.tokens_out,
+            "content": content,
+            "model": model_used,
+            "provider": provider_used,
+            "studio": target_studio,
             "duration_ms": round(duration, 1),
-            "tool_results": [
-                {"tool": r.tool, "success": r.success, "output": r.output[:500]}
-                for r in tool_results
-            ],
         }
+
+    def _studio_for_agent(self, agent_id: str) -> str:
+        """Map agent to its most likely studio for model selection."""
+        mapping = {
+            "backend-specialist": "dev",
+            "frontend-specialist": "dev",
+            "devops-engineer": "dev",
+            "product-owner": "sales",
+            "product-manager": "marketing",
+            "project-planner": "analytics",
+        }
+        return mapping.get(agent_id, "dev")
 
     # ── Tool Integration ──────────────────────────────────────
 
