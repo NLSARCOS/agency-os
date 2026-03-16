@@ -17,6 +17,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from kernel.config import get_config
@@ -135,8 +136,10 @@ class MissionEngine:
 
         return mission_id
 
-    def execute_mission(self, mission_id: int) -> dict[str, Any]:
-        """Execute a mission through its full lifecycle."""
+    def execute_mission(self, mission_id: int, _retry: int = 0) -> dict[str, Any]:
+        """Execute a mission through its full lifecycle (with auto-retry)."""
+        MAX_RETRIES = 2
+
         mission = self.state.get_mission(mission_id)
         if not mission:
             return {"success": False, "error": f"Mission #{mission_id} not found"}
@@ -149,8 +152,10 @@ class MissionEngine:
         name = mission["name"]
         description = mission.get("description", "")
 
-        logger.info("Executing mission #%d: %s → %s", mission_id, name, studio)
-
+        logger.info(
+            "Executing mission #%d: %s → %s (attempt %d/%d)",
+            mission_id, name, studio, _retry + 1, MAX_RETRIES + 1,
+        )
         # Transition: QUEUED → ACTIVE → RUNNING
         self.state.update_mission_status(mission_id, MissionStatus.ACTIVE)
         self.state.update_mission_status(mission_id, MissionStatus.RUNNING)
@@ -209,7 +214,22 @@ class MissionEngine:
 
         except Exception as e:
             error_msg = f"{e}\n{traceback.format_exc()}"
-            logger.error("Mission #%d failed: %s", mission_id, e)
+            logger.error("Mission #%d failed (attempt %d): %s", mission_id, _retry + 1, e)
+
+            # ── Auto-retry with exponential backoff ──
+            self._running_missions.discard(mission_id)
+            if _retry < MAX_RETRIES:
+                delay = 2 ** (_retry + 1)  # 2s, 4s
+                logger.info(
+                    "Retrying mission #%d in %ds (attempt %d/%d)",
+                    mission_id, delay, _retry + 2, MAX_RETRIES + 1,
+                )
+                time.sleep(delay)
+                self.state.update_mission_status(
+                    mission_id, MissionStatus.QUEUED, f"Retry {_retry + 2}"
+                )
+                return self.execute_mission(mission_id, _retry=_retry + 1)
+
             self.state.update_mission_status(
                 mission_id, MissionStatus.FAILED, error_msg[:2000]
             )
@@ -217,10 +237,15 @@ class MissionEngine:
                 "success": False,
                 "mission_id": mission_id,
                 "error": str(e),
+                "retries": _retry,
             }
 
         finally:
             self._running_missions.discard(mission_id)
+
+        # ── Result Delivery ──────────────────────────────────
+        self._save_output(mission_id, name, studio, result)
+        self._notify_completion(mission_id, name, studio, result)
 
         # Log KPIs
         self.state.log_kpi(
@@ -234,6 +259,70 @@ class MissionEngine:
         )
 
         return result
+
+    def _save_output(
+        self, mission_id: int, name: str, studio: str, result: dict
+    ) -> None:
+        """Save mission output to data/outputs/ for user access."""
+        try:
+            output_dir = Path(self.state._root) / "data" / "outputs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            output_file = output_dir / f"mission_{mission_id}.json"
+            output_data = {
+                "mission_id": mission_id,
+                "name": name,
+                "studio": studio,
+                "success": result.get("success", False),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "result": result,
+            }
+            output_file.write_text(
+                json.dumps(output_data, indent=2, default=str),
+                encoding="utf-8",
+            )
+            logger.info("Output saved: %s", output_file)
+        except Exception as e:
+            logger.error("Failed to save output for mission #%d: %s", mission_id, e)
+
+    def _notify_completion(
+        self, mission_id: int, name: str, studio: str, result: dict
+    ) -> None:
+        """Send Telegram/console notification on mission completion."""
+        try:
+            from kernel.notifier import Notifier, NotificationPriority
+
+            notifier = Notifier()
+            success = result.get("success", False)
+
+            if success:
+                duration = result.get("duration_ms", 0)
+                notifier.notify(
+                    title=f"✅ Mission #{mission_id} Complete",
+                    message=(
+                        f"**[{studio.upper()}]** {name}\n"
+                        f"⏱ {duration:.0f}ms | "
+                        f"Model: {result.get('model', 'N/A')}"
+                    ),
+                    priority=NotificationPriority.NORMAL,
+                    source="mission_engine",
+                    category="task",
+                    data={"mission_id": mission_id, "studio": studio},
+                )
+            else:
+                notifier.notify(
+                    title=f"❌ Mission #{mission_id} Failed",
+                    message=(
+                        f"**[{studio.upper()}]** {name}\n"
+                        f"Error: {result.get('error', 'Unknown')[:200]}"
+                    ),
+                    priority=NotificationPriority.HIGH,
+                    source="mission_engine",
+                    category="error",
+                    data={"mission_id": mission_id, "studio": studio},
+                )
+        except Exception as e:
+            logger.error("Failed to notify for mission #%d: %s", mission_id, e)
 
     # ── DAG Planning ──────────────────────────────────────────
 
@@ -380,6 +469,7 @@ class MissionEngine:
                     task=step.task,
                     context=context,
                     tools_enabled=bool(step.tools),
+                    studio=self.state.get_mission(mission_id).get("studio", "dev"),
                 )
 
                 step.status = "completed" if step_result.get("success") else "failed"
@@ -456,6 +546,23 @@ class MissionEngine:
             "🚀 Parallel cycle: %d studios active — %s",
             len(promoted), ", ".join(studios_active),
         )
+
+        # ── Progress Notification ────────────────────────────
+        try:
+            from kernel.notifier import Notifier, NotificationPriority
+            notifier = Notifier()
+            mission_list = "\n".join(
+                f"  • {m['studio'].upper()}: {m['name']}" for m in promoted
+            )
+            notifier.notify(
+                title="🚀 Studios Working",
+                message=f"Starting parallel execution:\n{mission_list}",
+                priority=NotificationPriority.LOW,
+                source="mission_engine",
+                category="task",
+            )
+        except Exception:
+            pass  # Non-critical
 
         # Execute all missions concurrently (each studio uses its own model)
         loop = asyncio.get_event_loop()

@@ -169,14 +169,42 @@ def _execute_tool_node(
 def _execute_condition_node(
     node: WorkflowNode, context: dict[str, Any]
 ) -> dict[str, Any]:
-    """Evaluate a condition for branching."""
+    """Evaluate a condition for branching (safe, no eval)."""
     try:
+        import ast
+        import operator
+
         # Build evaluation context from previous results
-        eval_ctx = {"context": context}
+        eval_ctx: dict[str, Any] = {}
         for node_id, result in context.items():
             eval_ctx[node_id] = result
+        eval_ctx["context"] = context
 
-        condition_result = bool(eval(node.condition, {"__builtins__": {}}, eval_ctx))
+        # Safe evaluation: only support simple comparisons
+        # e.g., "context['dev']['success'] == True"
+        condition = node.condition.strip()
+
+        # Try literal eval for simple True/False/number checks
+        try:
+            condition_result = bool(ast.literal_eval(condition))
+        except (ValueError, SyntaxError):
+            # Compile AST and only allow safe nodes
+            tree = ast.parse(condition, mode="eval")
+            for n in ast.walk(tree):
+                allowed = (
+                    ast.Expression, ast.Compare, ast.BoolOp, ast.UnaryOp,
+                    ast.Constant, ast.Name, ast.Attribute, ast.Subscript,
+                    ast.Load, ast.Eq, ast.NotEq, ast.Lt, ast.Gt, ast.LtE,
+                    ast.GtE, ast.Is, ast.IsNot, ast.In, ast.NotIn,
+                    ast.And, ast.Or, ast.Not, ast.Index, ast.Slice,
+                )
+                if not isinstance(n, allowed):
+                    raise ValueError(f"Unsafe AST node: {type(n).__name__}")
+            # Only eval with restricted context, no builtins
+            condition_result = bool(
+                eval(compile(tree, "<condition>", "eval"), {"__builtins__": {}}, eval_ctx)
+            )
+
         return {
             "success": True,
             "content": str(condition_result),

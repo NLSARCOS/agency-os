@@ -252,13 +252,37 @@ class ToolExecutor:
         cmd = params.get("command", "")
         cwd = params.get("cwd", str(self.cfg.root))
 
-        # Block dangerous commands
-        dangerous = ["rm -rf /", "mkfs", "dd if=", ":(){", "fork bomb"]
-        for d in dangerous:
-            if d in cmd:
+        # Block dangerous commands — comprehensive sandbox
+        blocked_exact = [
+            "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "fork bomb",
+            "sudo rm", "sudo dd", "sudo mkfs", "chmod 777 /",
+            "shutdown", "reboot", "init 0", "init 6", "halt",
+            "systemctl stop", "systemctl disable",
+            "> /dev/sda", "> /dev/null",
+        ]
+        blocked_patterns = [
+            "curl|bash", "curl|sh", "wget|bash", "wget|sh",
+            "curl -s|", "wget -q|",  # pipe from internet to shell
+            "pkill -9", "killall", "kill -9",
+            "export AWS_", "export OPENAI_", "export ANTHROPIC_",
+            "/etc/passwd", "/etc/shadow",
+            "../../../../",  # path traversal
+            "nc -l", "ncat",  # reverse shells
+            "; rm ", "&& rm ",  # chained destructive
+        ]
+
+        cmd_lower = cmd.lower().strip()
+        for d in blocked_exact:
+            if d in cmd_lower:
                 return ToolResult(
                     tool="shell", success=False,
                     error=f"Blocked dangerous command: {d}",
+                )
+        for p in blocked_patterns:
+            if p in cmd_lower.replace(" ", ""):
+                return ToolResult(
+                    tool="shell", success=False,
+                    error=f"Blocked dangerous pattern: {p}",
                 )
 
         try:

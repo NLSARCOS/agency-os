@@ -124,6 +124,17 @@ class AgencyHeartbeat:
         # Write PID file for external health checks
         self._pid_file.write_text(str(os.getpid()))
 
+        # ── Graceful Shutdown ────────────────────────────────
+        import signal
+
+        def _handle_shutdown(signum: int, frame: object) -> None:
+            sig_name = signal.Signals(signum).name
+            logger.info("Received %s — shutting down gracefully...", sig_name)
+            self.is_running = False
+
+        signal.signal(signal.SIGTERM, _handle_shutdown)
+        signal.signal(signal.SIGINT, _handle_shutdown)
+
         logger.info(
             f"Agency OS Heartbeat STARTED (PID {os.getpid()}). "
             f"[Tick: {self.config.tick_interval}s, "
@@ -141,6 +152,7 @@ class AgencyHeartbeat:
             logger.error(f"Heartbeat crashed: {e}")
         finally:
             self.is_running = False
+            logger.info("Heartbeat stopped. Cleaning up...")
             if self._pid_file.exists():
                 self._pid_file.unlink(missing_ok=True)
 
