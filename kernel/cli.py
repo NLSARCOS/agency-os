@@ -694,6 +694,26 @@ def health() -> None:
 # ── Init ──────────────────────────────────────────────────────
 
 @main.command()
+@click.option("--port", default=3000, help="Dashboard port (default: 3000)")
+@click.option("--host", default="0.0.0.0", help="Dashboard host")
+def dashboard(port: int, host: str) -> None:
+    """🖥️  Launch the web dashboard for real-time monitoring."""
+    from kernel.dashboard import start_dashboard
+
+    console.print(
+        Panel(
+            f"[bold green]🖥️  Agency OS Dashboard[/]\n\n"
+            f"  Open in browser: [bold cyan]http://localhost:{port}[/]\n"
+            f"  Auto-refresh every 10s\n"
+            f"  Press Ctrl+C to stop",
+            title="Dashboard",
+            border_style="cyan",
+        )
+    )
+    start_dashboard(host=host, port=port)
+
+
+@main.command()
 def init() -> None:
     """Initialize Agency OS in current directory."""
     from kernel.config import get_config
