@@ -39,8 +39,7 @@ DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
         {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter", "tier": "free"},
-        {"name": "claude-sonnet-4-20250514", "provider": "anthropic", "tier": "premium"},
-        {"name": "gpt-4o", "provider": "openai", "tier": "premium"},
+        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
     ],
     "analytics": [
         {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
