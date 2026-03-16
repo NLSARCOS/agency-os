@@ -265,7 +265,7 @@ class MissionEngine:
     ) -> None:
         """Save mission output to data/outputs/ for user access."""
         try:
-            output_dir = Path(self.state._root) / "data" / "outputs"
+            output_dir = get_config().root / "data" / "outputs"
             output_dir.mkdir(parents=True, exist_ok=True)
 
             output_file = output_dir / f"mission_{mission_id}.json"
@@ -475,14 +475,21 @@ class MissionEngine:
                 step.status = "completed" if step_result.get("success") else "failed"
                 step.result = step_result
 
+                # Extract file artifacts from agent response
+                content = step_result.get("content", "")
+                artifacts = self._extract_file_artifacts(
+                    mission_id, step.id, content
+                )
+
                 results[step.id] = {
                     "status": step.status,
                     "agent": step.agent,
-                    "content": step_result.get("content", "")[:1000],
+                    "content": content[:1000],
                     "model": step_result.get("model", ""),
                     "duration_ms": step_result.get("duration_ms", 0),
                     "tools_used": len(step_result.get("tool_results", [])),
                     "error": step_result.get("error", ""),
+                    "artifacts": artifacts,
                 }
 
                 completed.add(step.id)
@@ -518,6 +525,95 @@ class MissionEngine:
                 break
 
         return results
+
+    def _extract_file_artifacts(
+        self, mission_id: int, step_id: str, content: str
+    ) -> list[str]:
+        """Extract code blocks from agent response and save as files.
+
+        Supports patterns like:
+          ```html filename="index.html"
+          ```python # filename: app.py
+          <!-- filename: style.css -->
+        """
+        import re
+
+        if not content:
+            return []
+
+        artifacts: list[str] = []
+        output_dir = get_config().root / "data" / "outputs" / f"mission_{mission_id}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Pattern: ```lang filename="name" or ```lang # name
+        code_block_pattern = re.compile(
+            r'```(\w+)(?:\s+(?:filename[=:]"?([^"\n]+)"?|#\s*(\S+)))?\s*\n'
+            r'(.*?)'
+            r'\n```',
+            re.DOTALL,
+        )
+
+        # Language → extension map
+        ext_map = {
+            "html": ".html", "css": ".css", "javascript": ".js", "js": ".js",
+            "typescript": ".ts", "ts": ".ts", "python": ".py", "py": ".py",
+            "json": ".json", "yaml": ".yaml", "yml": ".yaml",
+            "markdown": ".md", "md": ".md", "sql": ".sql",
+            "shell": ".sh", "bash": ".sh", "tsx": ".tsx", "jsx": ".jsx",
+            "go": ".go", "rust": ".rs", "java": ".java",
+        }
+
+        block_idx = 0
+        for match in code_block_pattern.finditer(content):
+            lang = match.group(1).lower()
+            filename = match.group(2) or match.group(3)
+            code = match.group(4)
+
+            if not code.strip():
+                continue
+
+            if not filename:
+                ext = ext_map.get(lang, f".{lang}")
+                filename = f"{step_id}_{block_idx}{ext}"
+
+            # Sanitize filename
+            filename = Path(filename).name  # Remove path components
+            filepath = output_dir / filename
+
+            try:
+                filepath.write_text(code, encoding="utf-8")
+                artifacts.append(str(filepath))
+                logger.info("Artifact saved: %s", filepath)
+                block_idx += 1
+            except Exception as e:
+                logger.error("Failed to save artifact %s: %s", filename, e)
+
+        # Also check for <!-- filename: X --> patterns before code blocks
+        inline_pattern = re.compile(
+            r'<!--\s*filename:\s*(\S+)\s*-->\s*\n```\w*\n(.*?)\n```',
+            re.DOTALL,
+        )
+        for match in inline_pattern.finditer(content):
+            filename = Path(match.group(1)).name
+            code = match.group(2)
+            if not code.strip():
+                continue
+            filepath = output_dir / filename
+            if not filepath.exists():  # Don't overwrite
+                try:
+                    filepath.write_text(code, encoding="utf-8")
+                    artifacts.append(str(filepath))
+                    block_idx += 1
+                except Exception:
+                    pass
+
+        if artifacts:
+            logger.info(
+                "Mission #%d step '%s': %d file artifacts saved",
+                mission_id, step_id, len(artifacts),
+            )
+
+        return artifacts
 
     # ── Cycle ─────────────────────────────────────────────────
 
@@ -605,12 +701,158 @@ class MissionEngine:
             source="mission_engine",
         )
 
+        # ── Consolidated Report: check if entire objective is done ──
+        self._check_objective_completion(promoted)
+
         return {
             "action": "parallel",
             "studios": len(promoted),
             "succeeded": succeeded,
             "results": cycle_results,
         }
+
+    def _check_objective_completion(self, just_executed: list[dict]) -> None:
+        """Check if all missions from an objective are done → generate final report."""
+        # Group by objective
+        objectives_seen: set[str] = set()
+        for m in just_executed:
+            try:
+                meta = json.loads(m.get("metadata", "{}") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+            obj = meta.get("objective", "")
+            if obj:
+                objectives_seen.add(obj)
+
+        if not objectives_seen:
+            return
+
+        for objective in objectives_seen:
+            # Query ALL missions for this objective
+            with self.state._lock:
+                rows = self.state._conn.execute(
+                    "SELECT id, name, studio, status, result, metadata FROM missions "
+                    "WHERE metadata LIKE ?",
+                    (f'%{objective[:50]}%',),
+                ).fetchall()
+
+            if not rows:
+                continue
+
+            # Check if all are done (done or failed, not queued/running)
+            terminal = {"done", "failed"}
+            all_done = all(r["status"] in terminal for r in rows)
+            if not all_done:
+                continue
+
+            # All missions for this objective are complete → generate report
+            self._generate_consolidated_report(objective, rows)
+
+    def _generate_consolidated_report(
+        self, objective: str, missions: list
+    ) -> None:
+        """Generate ONE final report for a completed objective."""
+        try:
+            output_dir = get_config().root / "data" / "outputs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            total = len(missions)
+            succeeded = sum(1 for m in missions if m["status"] == "done")
+            failed = total - succeeded
+
+            # Build markdown report
+            lines = [
+                f"# 📋 Objective Complete: {objective}",
+                f"",
+                f"**Result:** {succeeded}/{total} missions succeeded"
+                + (f" | {failed} failed" if failed else ""),
+                f"",
+                f"---",
+                f"",
+            ]
+
+            for m in missions:
+                status_icon = "✅" if m["status"] == "done" else "❌"
+                lines.append(f"## {status_icon} [{m['studio'].upper()}] {m['name']}")
+                lines.append(f"")
+                result_text = m.get("result", "")
+                if result_text:
+                    # Extract content from result JSON
+                    try:
+                        result_data = json.loads(result_text)
+                        if isinstance(result_data, dict):
+                            for step_name, step_info in result_data.items():
+                                content = step_info.get("content", "")
+                                if content:
+                                    lines.append(content[:1500])
+                                    lines.append("")
+                        else:
+                            lines.append(str(result_text)[:1500])
+                    except (json.JSONDecodeError, TypeError):
+                        lines.append(str(result_text)[:1500])
+                lines.append("")
+                lines.append("---")
+                lines.append("")
+
+            # Save report
+            import hashlib
+            obj_hash = hashlib.md5(objective.encode()).hexdigest()[:8]
+            report_file = output_dir / f"objective_{obj_hash}.md"
+            report_file.write_text("\n".join(lines), encoding="utf-8")
+            logger.info("Consolidated report: %s", report_file)
+
+            # Also save as JSON
+            json_report = {
+                "objective": objective,
+                "total_missions": total,
+                "succeeded": succeeded,
+                "failed": failed,
+                "missions": [
+                    {
+                        "id": m["id"],
+                        "name": m["name"],
+                        "studio": m["studio"],
+                        "status": m["status"],
+                    }
+                    for m in missions
+                ],
+                "report_file": str(report_file),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            json_file = output_dir / f"objective_{obj_hash}.json"
+            json_file.write_text(
+                json.dumps(json_report, indent=2, default=str),
+                encoding="utf-8",
+            )
+
+            # Send ONE consolidated Telegram notification
+            try:
+                from kernel.notifier import Notifier, NotificationPriority
+                notifier = Notifier()
+                studios_list = ", ".join(
+                    m["studio"].upper() for m in missions
+                )
+                notifier.notify(
+                    title="📋 Objective Complete!",
+                    message=(
+                        f"**{objective[:100]}**\n\n"
+                        f"✅ {succeeded}/{total} missions succeeded\n"
+                        f"Studios: {studios_list}\n"
+                        f"Report: `{report_file.name}`"
+                    ),
+                    priority=NotificationPriority.NORMAL,
+                    source="mission_engine",
+                    category="task",
+                    data={
+                        "objective": objective[:200],
+                        "report": str(report_file),
+                    },
+                )
+            except Exception as e:
+                logger.error("Failed consolidated notification: %s", e)
+
+        except Exception as e:
+            logger.error("Failed to generate consolidated report: %s", e)
 
     def _inject_wave_context(
         self, completed_studios: list[str], results: dict[str, dict]

@@ -244,12 +244,101 @@ def mission_run(mission_id: int) -> None:
         for step_id, step_data in steps.items():
             icon = "✅" if step_data["status"] == "completed" else "❌" if step_data["status"] == "failed" else "⏭️"
             console.print(f"  {icon} {step_id}: {step_data['agent']} ({step_data.get('duration_ms', 0):.0f}ms)")
+            # Show artifacts
+            artifacts = step_data.get("artifacts", [])
+            for art in artifacts:
+                console.print(f"      📄 {art}")
     else:
         console.print(Panel(
             f"[red]❌ Mission #{mission_id} failed[/red]\n"
             f"  💥 Error: {result.get('error', 'Unknown')[:300]}",
             border_style="red",
         ))
+
+
+@mission.command("results")
+@click.argument("mission_id", type=int)
+def mission_results(mission_id: int) -> None:
+    """📦 View results and artifacts for a completed mission."""
+    from pathlib import Path
+    import json as json_mod
+
+    cfg = get_config()
+    output_dir = cfg.data_dir / "outputs"
+
+    # Check mission-specific output
+    mission_file = output_dir / f"mission_{mission_id}.json"
+    mission_dir = output_dir / f"mission_{mission_id}"
+
+    if mission_file.exists():
+        data = json_mod.loads(mission_file.read_text())
+        console.print(Panel(
+            f"[bold]Mission #{mission_id}: {data.get('name', 'N/A')}[/bold]\n"
+            f"  Studio: {data.get('studio', 'N/A')}\n"
+            f"  Success: {'✅' if data.get('success') else '❌'}\n"
+            f"  Timestamp: {data.get('timestamp', 'N/A')}",
+            border_style="green" if data.get("success") else "red",
+        ))
+    else:
+        console.print(f"[yellow]No output file for mission #{mission_id}[/yellow]")
+
+    # List artifacts
+    if mission_dir.exists():
+        files = list(mission_dir.iterdir())
+        if files:
+            console.print(f"\n[bold]📄 File Artifacts ({len(files)}):[/bold]")
+            for f in sorted(files):
+                size = f.stat().st_size
+                console.print(f"  📄 {f.name} ({size:,} bytes)")
+                console.print(f"     Path: {f}")
+        else:
+            console.print("[dim]No file artifacts generated[/dim]")
+    else:
+        console.print("[dim]No artifact directory[/dim]")
+
+
+@mission.command("outputs")
+def mission_outputs() -> None:
+    """📦 List all mission outputs and objective reports."""
+    from pathlib import Path
+
+    cfg = get_config()
+    output_dir = cfg.data_dir / "outputs"
+
+    if not output_dir.exists():
+        console.print("[yellow]No outputs directory yet[/yellow]")
+        return
+
+    # List objective reports
+    obj_reports = sorted(output_dir.glob("objective_*.md"))
+    if obj_reports:
+        console.print("[bold]📋 Objective Reports:[/bold]")
+        for r in obj_reports:
+            console.print(f"  📋 {r.name} ({r.stat().st_size:,} bytes)")
+
+    # List mission outputs
+    mission_files = sorted(output_dir.glob("mission_*.json"))
+    if mission_files:
+        console.print(f"\n[bold]📦 Mission Outputs ({len(mission_files)}):[/bold]")
+        for f in mission_files:
+            console.print(f"  📦 {f.name}")
+
+    # List mission artifact directories
+    mission_dirs = sorted(
+        d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("mission_")
+    )
+    if mission_dirs:
+        console.print(f"\n[bold]📄 Artifact Directories ({len(mission_dirs)}):[/bold]")
+        for d in mission_dirs:
+            files = list(d.iterdir())
+            console.print(f"  📁 {d.name}/ ({len(files)} files)")
+            for f in sorted(files)[:5]:
+                console.print(f"      📄 {f.name}")
+            if len(files) > 5:
+                console.print(f"      ... and {len(files) - 5} more")
+
+    if not obj_reports and not mission_files and not mission_dirs:
+        console.print("[yellow]No outputs yet. Run `agency orchestrate` first.[/yellow]")
 
 
 # ── Agent Commands ────────────────────────────────────────────

@@ -494,7 +494,7 @@ class AgentManager:
     def _update_memory(
         self, agent: AgentProfile, task: str, response: str
     ) -> None:
-        """Update agent's short-term memory."""
+        """Update agent's memory (in-memory + persistent SQLite)."""
         agent.memory.append({
             "role": "user",
             "content": task[:500],
@@ -509,11 +509,27 @@ class AgentManager:
         if len(agent.memory) > agent.max_memory:
             agent.memory = agent.memory[-agent.max_memory:]
 
+        # Persist to SQLite
+        try:
+            from kernel.state_manager import get_state
+            state = get_state()
+            state.save_agent_memory(agent.id, "user", task[:500])
+            state.save_agent_memory(agent.id, "assistant", response[:500])
+        except Exception:
+            pass  # Non-critical
+
     def get_agent_memory(self, agent_id: str, limit: int = 10) -> list[dict]:
         agent = self._agents.get(agent_id)
-        if not agent:
+        # Try in-memory first
+        if agent and agent.memory:
+            return agent.memory[-limit:]
+        # Fall back to SQLite (persistent memory)
+        try:
+            from kernel.state_manager import get_state
+            state = get_state()
+            return state.load_agent_memory(agent_id, limit)
+        except Exception:
             return []
-        return agent.memory[-limit:]
 
     def clear_agent_memory(self, agent_id: str) -> None:
         agent = self._agents.get(agent_id)

@@ -489,6 +489,39 @@ class StateManager:
 
         return stats
 
+    # ── Agent Memory Persistence ─────────────────────────────
+
+    def save_agent_memory(
+        self, agent_id: str, role: str, content: str,
+        mission_id: int | None = None, metadata: dict | None = None,
+    ) -> int:
+        """Persist an agent memory entry to SQLite."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO agent_memory
+                   (agent_id, role, content, mission_id, timestamp, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (agent_id, role, content[:5000], mission_id, now,
+                 json.dumps(metadata or {})),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def load_agent_memory(
+        self, agent_id: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Load recent memory entries for an agent."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT role, content, mission_id, timestamp, metadata
+                   FROM agent_memory WHERE agent_id = ?
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (agent_id, limit),
+            ).fetchall()
+        # Return in chronological order
+        return [dict(r) for r in reversed(rows)]
+
     def close(self) -> None:
         self._conn.close()
 
