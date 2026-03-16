@@ -923,6 +923,136 @@ def memory_stats() -> None:
     ))
 
 
+# ── Autonomy Commands ─────────────────────────────────────────
+
+@main.group()
+def auto() -> None:
+    """Autonomous operations (discover, heal, learn)."""
+    pass
+
+
+@auto.command("discover")
+def auto_discover() -> None:
+    """Discover pending tasks proactively."""
+    from kernel.autonomy_engine import get_autonomy_engine
+
+    engine = get_autonomy_engine()
+    result = engine.run_cycle(max_tasks=10, dry_run=True)
+
+    console.print(Panel(
+        f"[bold]🧠 Autonomy Discovery[/bold]\n\n"
+        f"  📋 Tasks Found: {result['tasks_found']}\n"
+        f"  📚 Learnings: {result['learnings']}\n"
+        f"  🔍 Mode: Dry Run",
+        border_style="cyan",
+    ))
+
+    if result["results"]:
+        table = Table(title="🔍 Discovered Tasks", border_style="blue")
+        table.add_column("Source", style="bold")
+        table.add_column("Studio", style="cyan")
+        table.add_column("Priority", justify="right")
+        table.add_column("Task")
+        table.add_column("Reason", style="dim")
+
+        for r in result["results"]:
+            prio = r["priority"]
+            prio_icon = "🔴" if prio >= 8 else "🟡" if prio >= 5 else "🔵"
+            table.add_row(
+                r["source"], r.get("studio", "-"),
+                f"{prio_icon} {prio:.1f}",
+                r["task"][:50], r.get("reason", "")[:40],
+            )
+        console.print(table)
+    else:
+        console.print("[dim]No tasks discovered. System is healthy.[/dim]")
+
+
+@auto.command("run")
+@click.option("-n", "--max-tasks", default=3, type=int, help="Max tasks to execute")
+def auto_run(max_tasks: int) -> None:
+    """Execute an autonomy cycle (real execution)."""
+    from kernel.autonomy_engine import get_autonomy_engine
+
+    engine = get_autonomy_engine()
+
+    console.print("[bold yellow]🧠 Running autonomy cycle (LIVE)...[/bold yellow]")
+    with console.status("[green]Discovering and executing tasks..."):
+        result = engine.run_cycle(max_tasks=max_tasks, dry_run=False)
+
+    console.print(Panel(
+        f"[bold]🧠 Autonomy Cycle Complete[/bold]\n\n"
+        f"  📋 Tasks Found: {result['tasks_found']}\n"
+        f"  ✅ Executed: {result['tasks_executed']}\n"
+        f"  📚 Learnings: {result['learnings']}",
+        border_style="green" if result["tasks_executed"] > 0 else "dim",
+    ))
+
+    for r in result["results"]:
+        icon = "✅" if r.get("success") else "❌"
+        console.print(f"  {icon} [{r['source']}] {r['task'][:60]}")
+
+
+@auto.command("status")
+def auto_status() -> None:
+    """Show autonomy engine status."""
+    from kernel.autonomy_engine import get_autonomy_engine
+
+    engine = get_autonomy_engine()
+    status = engine.get_status()
+
+    console.print(Panel(
+        f"[bold]🧠 Autonomy Engine[/bold]\n\n"
+        f"  📚 Learnings: {status['learnings']}\n"
+        f"  📝 Agent Memories: {status['memory_stats']['total_memories']}\n"
+        f"  📖 Knowledge Items: {status['memory_stats']['total_knowledge']}",
+        border_style="cyan",
+    ))
+
+    if status["top_patterns"]:
+        table = Table(title="📊 Top Patterns", border_style="yellow")
+        table.add_column("Pattern")
+        table.add_column("Studio")
+        table.add_column("Confidence", justify="right")
+        table.add_column("Count", justify="right")
+
+        for p in status["top_patterns"]:
+            table.add_row(
+                p["pattern"], p["studio"],
+                f"{p['confidence']:.2f}", str(p["count"]),
+            )
+        console.print(table)
+
+
+@auto.command("learn")
+def auto_learn() -> None:
+    """View autonomy learnings."""
+    from kernel.autonomy_engine import get_autonomy_engine
+
+    engine = get_autonomy_engine()
+    learnings = engine.get_learnings()
+
+    if not learnings:
+        console.print("[dim]No learnings yet. Run cycles to accumulate patterns.[/dim]")
+        return
+
+    table = Table(title="🧠 Autonomy Learnings", border_style="magenta")
+    table.add_column("Pattern", style="bold")
+    table.add_column("Outcome")
+    table.add_column("Studio")
+    table.add_column("Confidence", justify="right")
+    table.add_column("Count", justify="right")
+
+    for l in learnings:
+        icon = "✅" if l["outcome"] == "success" else "❌"
+        table.add_row(
+            l["pattern"], f"{icon} {l['outcome']}",
+            l["studio"], f"{l['confidence']:.2f}", str(l["count"]),
+        )
+    console.print(table)
+
+
 if __name__ == "__main__":
     main()
+
 
