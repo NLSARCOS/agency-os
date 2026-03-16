@@ -25,28 +25,30 @@ DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     "leadops": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "kimi-k2.5", "provider": "ollama", "tier": "cloud"},
+        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
     ],
     "marketing": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "kimi-k2.5", "provider": "ollama", "tier": "cloud"},
+        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
     ],
     "sales": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
     ],
     "dev": [
+        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
+        {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
         {"name": "claude-sonnet-4-20250514", "provider": "anthropic", "tier": "premium"},
         {"name": "gpt-4o", "provider": "openai", "tier": "premium"},
-        {"name": "kimi-k2.5", "provider": "ollama", "tier": "cloud"},
     ],
     "analytics": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
-        {"name": "kimi-k2.5", "provider": "ollama", "tier": "cloud"},
+        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
     ],
     "creative": [
         {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
-        {"name": "kimi-k2.5", "provider": "ollama", "tier": "cloud"},
+        {"name": "openrouter/openai/gpt-oss-20b:free", "provider": "openrouter", "tier": "free"},
     ],
     "abm": [
         {"name": "openrouter/arcee-ai/trinity-mini:free", "provider": "openrouter", "tier": "free"},
@@ -193,6 +195,13 @@ class ModelRouter:
         provider = model_cfg["provider"]
         model_name = model_cfg["name"]
         start = time.monotonic()
+
+        # Guard: skip providers with no API key (except ollama which needs none)
+        if provider != "ollama":
+            key_name = PROVIDER_KEY_MAP.get(provider, provider)
+            api_key = self._cfg.api_keys.get(key_name, "")
+            if not api_key:
+                raise RuntimeError(f"No API key configured for provider '{provider}' (set it in .env)")
 
         if provider == "anthropic":
             return self._call_anthropic(model_name, prompt, system, start)

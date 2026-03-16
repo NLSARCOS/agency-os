@@ -294,10 +294,24 @@ class OpenClawBridge:
         model: str,
         system: str,
     ) -> OpenClawResponse:
-        """Direct API call when OpenClaw is unavailable."""
+        """
+        Fallback when the gateway REST endpoint is unavailable.
+        
+        Strategy:
+        1. Try `openclaw agent` CLI (uses gateway WebSocket + OAuth models)
+        2. If CLI fails, use model_router direct API calls
+        """
+        prompt = messages[-1].content if messages else ""
+        
+        # Strategy 1: Use OpenClaw CLI (leverages OAuth, all configured models)
+        try:
+            return self._call_via_cli(prompt, system)
+        except Exception as e:
+            logger.debug("OpenClaw CLI fallback failed: %s — trying direct API", e)
+        
+        # Strategy 2: Direct API calls via model_router
         from kernel.model_router import get_model_router
         router = get_model_router()
-        prompt = messages[-1].content if messages else ""
         resp = router.call_model_sync(prompt=prompt, system=system)
         return OpenClawResponse(
             content=resp.content,
@@ -308,6 +322,58 @@ class OpenClawBridge:
             latency_ms=resp.latency_ms,
             success=resp.success,
             error=resp.error,
+        )
+
+    def _call_via_cli(self, prompt: str, system: str = "") -> OpenClawResponse:
+        """
+        Route through `openclaw agent` CLI (WebSocket → gateway models + OAuth).
+        
+        This leverages OpenClaw's full model stack including OAuth-connected
+        providers like openai-codex that aren't accessible via REST.
+        """
+        import subprocess
+        
+        cmd = ["openclaw", "agent", "--json", "--message", prompt]
+        
+        start = time.monotonic()
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        latency = (time.monotonic() - start) * 1000
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"openclaw agent failed (exit {result.returncode}): {result.stderr[:200]}")
+        
+        # Parse JSON output
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # If not valid JSON, the raw stdout is the response text
+            return OpenClawResponse(
+                content=result.stdout.strip(),
+                model="openclaw-cli",
+                provider="openclaw",
+                latency_ms=latency,
+            )
+        
+        # Extract from structured JSON response
+        content = (
+            data.get("result", {}).get("content", "")
+            or data.get("content", "")
+            or data.get("message", "")
+            or result.stdout.strip()
+        )
+        
+        return OpenClawResponse(
+            content=content,
+            model=data.get("model", "openclaw-cli"),
+            provider="openclaw",
+            tokens_in=data.get("usage", {}).get("prompt_tokens", 0),
+            tokens_out=data.get("usage", {}).get("completion_tokens", 0),
+            latency_ms=latency,
         )
 
     # ── Proactive Messaging (Agency → Owner) ─────────────────
