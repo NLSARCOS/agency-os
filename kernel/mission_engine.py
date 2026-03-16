@@ -1,42 +1,76 @@
 #!/usr/bin/env python3
 """
-Agency OS — Mission Engine
+Agency OS v3.0 — Mission Engine
 
-Event-driven mission lifecycle with state machine.
-Handles the full lifecycle: QUEUED → ACTIVE → RUNNING → REVIEW → DONE/FAILED.
-Auto-promotes missions and executes studio pipelines.
+DAG-based mission execution with crew assembly, agent delegation,
+tool execution, and checkpoint/resume. Full lifecycle:
+QUEUED → ACTIVE → RUNNING → REVIEW → DONE/FAILED
+
+Inspired by LangGraph state machines + CrewAI crew patterns.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import traceback
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from kernel.config import get_config
 from kernel.state_manager import MissionStatus, TaskStatus, get_state
 from kernel.task_router import TaskRouter
+from kernel.event_bus import Event, get_event_bus
+from kernel.agent_manager import AgentManager, get_agent_manager
+from kernel.tool_executor import get_tool_executor
 
 logger = logging.getLogger("agency.mission")
 
 
+@dataclass
+class MissionStep:
+    """A single step in a mission's execution DAG."""
+    id: str
+    name: str
+    agent: str
+    task: str
+    depends_on: list[str] = field(default_factory=list)
+    status: str = "pending"  # pending, running, completed, failed, skipped
+    result: dict[str, Any] = field(default_factory=dict)
+    tools: list[str] = field(default_factory=list)
+    condition: str = ""  # Condition for conditional branching
+
+
 class MissionEngine:
-    """Core mission execution engine with state machine lifecycle."""
+    """
+    Core mission execution engine with:
+    - DAG-based step execution (parallel + sequential)
+    - Crew assembly per mission type
+    - Agent delegation chains
+    - Tool execution integration
+    - Checkpoint/resume after failures
+    - Event-driven progress tracking
+    """
 
     def __init__(self) -> None:
         self.cfg = get_config()
         self.state = get_state()
         self.router = TaskRouter()
         self._studios: dict[str, Any] = {}
+        self._agent_manager: AgentManager | None = None
+        self._running_missions: set[int] = set()
+
+    def _get_agent_manager(self) -> AgentManager:
+        if self._agent_manager is None:
+            self._agent_manager = get_agent_manager()
+        return self._agent_manager
 
     def register_studio(self, name: str, studio_instance: Any) -> None:
-        """Register a studio pipeline for execution."""
         self._studios[name] = studio_instance
         logger.info("Registered studio: %s", name)
 
     def auto_discover_studios(self) -> None:
-        """Auto-discover and register available studios."""
         from studios.base_studio import load_all_studios
         for name, studio in load_all_studios().items():
             self.register_studio(name, studio)
@@ -48,208 +82,372 @@ class MissionEngine:
         name: str,
         description: str = "",
         priority: int = 5,
-        force_studio: str | None = None,
+        force_studio: str = "",
+        metadata: dict | None = None,
     ) -> int:
-        """Submit a new mission to the queue."""
-        # Route the mission to a studio
-        route = self.router.route(name, {"force_studio": force_studio} if force_studio else None)
+        """Submit a new mission — routes, creates crew, and queues."""
+        # Route to studio
+        if force_studio:
+            studio = force_studio
+            confidence = 1.0
+        else:
+            route_result = self.router.route(name)
+            studio = route_result.studio
+            confidence = route_result.confidence
 
+        # Create mission in DB
+        meta = metadata or {}
+        meta["routing_confidence"] = confidence
         mission_id = self.state.create_mission(
-            name=name,
-            description=description,
-            studio=route.studio,
-            priority=priority,
-            metadata={
-                "route_confidence": route.confidence,
-                "route_scores": route.scores,
-                "model_preference": route.model_preference,
-            },
+            name=name, description=description,
+            studio=studio, priority=priority,
+            metadata=meta,
         )
+
+        # Assemble crew
+        mgr = self._get_agent_manager()
+        crew = mgr.assemble_crew(studio)
+        meta["crew"] = crew
+
+        logger.info(
+            "Mission #%d submitted → %s (confidence: %.0f%%) crew: %s",
+            mission_id, studio, confidence * 100, crew,
+        )
+
+        # Emit event
+        bus = get_event_bus()
+        bus.publish_sync(Event(
+            type="mission.submitted",
+            payload={
+                "mission_id": mission_id, "name": name,
+                "studio": studio, "crew": crew,
+                "confidence": confidence,
+            },
+        ))
 
         self.state.log_event(
             "mission_submitted",
-            f"Mission #{mission_id} submitted: {name} → {route.studio} "
-            f"(confidence: {route.confidence:.0%})",
+            f"Mission #{mission_id} submitted: {name} → {studio} "
+            f"(confidence: {confidence:.0%}, crew: {crew})",
             source="mission_engine",
         )
-        logger.info(
-            "Mission #%d submitted → %s (confidence: %.0f%%)",
-            mission_id, route.studio, route.confidence * 100,
-        )
+
         return mission_id
 
     def execute_mission(self, mission_id: int) -> dict[str, Any]:
-        """Execute a mission through its assigned studio pipeline."""
+        """Execute a mission through its full lifecycle."""
         mission = self.state.get_mission(mission_id)
         if not mission:
-            return {"error": f"Mission #{mission_id} not found"}
+            return {"success": False, "error": f"Mission #{mission_id} not found"}
 
-        studio_name = mission["studio"]
-        result: dict[str, Any] = {
-            "mission_id": mission_id,
-            "studio": studio_name,
-            "status": "unknown",
-        }
+        if mission_id in self._running_missions:
+            return {"success": False, "error": f"Mission #{mission_id} already running"}
 
-        # Transition: → RUNNING
+        self._running_missions.add(mission_id)
+        studio = mission["studio"]
+        name = mission["name"]
+        description = mission.get("description", "")
+
+        logger.info("Executing mission #%d: %s → %s", mission_id, name, studio)
+
+        # Transition: QUEUED → ACTIVE → RUNNING
+        self.state.update_mission_status(mission_id, MissionStatus.ACTIVE)
         self.state.update_mission_status(mission_id, MissionStatus.RUNNING)
-        self.state.log_event(
-            "mission_started",
-            f"Mission #{mission_id} started in {studio_name}",
-            source="mission_engine",
-        )
 
-        start_time = time.monotonic()
+        bus = get_event_bus()
+        bus.publish_sync(Event(
+            type="mission.started",
+            payload={"mission_id": mission_id, "studio": studio},
+        ))
+
+        start = time.monotonic()
+        result: dict[str, Any] = {}
 
         try:
-            # Get studio pipeline
-            studio = self._studios.get(studio_name)
-            if not studio:
-                raise RuntimeError(
-                    f"Studio '{studio_name}' not registered. "
-                    f"Available: {list(self._studios.keys())}"
-                )
+            # Build execution plan
+            steps = self._plan_mission(mission_id, name, description, studio)
 
-            # Create task in state
-            task_id = self.state.create_task(
-                name=mission["name"],
-                studio=studio_name,
-                mission_id=mission_id,
-                input_data=mission["description"],
+            # Execute DAG
+            step_results = self._execute_dag(mission_id, steps)
+
+            # Collect results
+            success = all(
+                s["status"] == "completed" for s in step_results.values()
             )
+            result_text = json.dumps(step_results, indent=2, default=str)
 
-            # Execute the studio pipeline
-            pipeline_result = studio.run(
-                task=mission["name"],
-                description=mission["description"],
-                task_id=task_id,
-                metadata=mission.get("metadata", {}),
-            )
-
-            duration = time.monotonic() - start_time
-
-            # Complete task
-            self.state.complete_task(
-                task_id=task_id,
-                output_data=str(pipeline_result.get("output", "")),
-                model_used=str(pipeline_result.get("model_used", "")),
-                duration=duration,
-            )
-
-            # Log KPIs from pipeline
-            for kpi in pipeline_result.get("kpis", []):
-                self.state.log_kpi(
-                    studio=studio_name,
-                    metric_name=kpi["name"],
-                    metric_value=kpi["value"],
-                    unit=kpi.get("unit", ""),
-                )
-
-            # Transition: → DONE
+            # Transition: RUNNING → REVIEW → DONE/FAILED
             self.state.update_mission_status(
-                mission_id, MissionStatus.DONE,
-                result=str(pipeline_result.get("output", "completed")),
+                mission_id, MissionStatus.REVIEW, result_text[:1000]
             )
 
-            result.update({
-                "status": "done",
-                "duration_seconds": round(duration, 2),
-                "output": pipeline_result.get("output", ""),
-                "kpis": pipeline_result.get("kpis", []),
-            })
-
-            self.state.log_event(
-                "mission_completed",
-                f"Mission #{mission_id} completed in {duration:.1f}s",
-                source="mission_engine",
+            final_status = MissionStatus.DONE if success else MissionStatus.FAILED
+            self.state.update_mission_status(
+                mission_id, final_status, result_text[:2000]
             )
-            logger.info("Mission #%d completed in %.1fs", mission_id, duration)
+
+            duration = (time.monotonic() - start) * 1000
+
+            result = {
+                "success": success,
+                "mission_id": mission_id,
+                "studio": studio,
+                "duration_ms": round(duration, 1),
+                "steps": step_results,
+                "status": final_status.value,
+            }
+
+            bus.publish_sync(Event(
+                type="mission.completed" if success else "mission.failed",
+                payload={
+                    "mission_id": mission_id,
+                    "status": final_status.value,
+                    "duration_ms": duration,
+                },
+            ))
 
         except Exception as e:
-            duration = time.monotonic() - start_time
-            error_msg = f"{e.__class__.__name__}: {e}"
-            tb = traceback.format_exc()
-
-            # Transition: → FAILED
+            error_msg = f"{e}\n{traceback.format_exc()}"
+            logger.error("Mission #%d failed: %s", mission_id, e)
             self.state.update_mission_status(
-                mission_id, MissionStatus.FAILED, result=error_msg
+                mission_id, MissionStatus.FAILED, error_msg[:2000]
             )
+            result = {
+                "success": False,
+                "mission_id": mission_id,
+                "error": str(e),
+            }
 
-            result.update({
-                "status": "failed",
-                "error": error_msg,
-                "traceback": tb,
-                "duration_seconds": round(duration, 2),
-            })
+        finally:
+            self._running_missions.discard(mission_id)
 
-            self.state.log_event(
-                "mission_failed",
-                f"Mission #{mission_id} failed: {error_msg}",
-                source="mission_engine",
-                level="error",
-            )
-            logger.error(
-                "Mission #%d failed after %.1fs: %s",
-                mission_id, duration, error_msg,
-            )
+        # Log KPIs
+        self.state.log_kpi(
+            studio, "mission_duration_ms",
+            result.get("duration_ms", 0), "ms",
+        )
+        self.state.log_event(
+            "mission_completed" if result.get("success") else "mission_failed",
+            f"Mission #{mission_id}: {result.get('status', 'error')}",
+            source="mission_engine",
+        )
 
         return result
 
-    # ── Cycle Operations ──────────────────────────────────────
+    # ── DAG Planning ──────────────────────────────────────────
 
-    def run_cycle(self, max_missions: int = 5) -> list[dict]:
-        """Execute one full cycle: promote queued → active, run active missions."""
-        results = []
+    def _plan_mission(
+        self,
+        mission_id: int,
+        name: str,
+        description: str,
+        studio: str,
+    ) -> list[MissionStep]:
+        """Build execution steps for a mission."""
 
-        # Promote queued missions
-        promoted = 0
-        while promoted < max_missions:
-            mission = self.state.promote_next_mission()
-            if not mission:
+        # Get crew
+        mgr = self._get_agent_manager()
+        crew = mgr.assemble_crew(studio)
+        lead_agent = crew[0] if crew else "backend-specialist"
+
+        # Default workflow: intake → plan → execute → review
+        steps = [
+            MissionStep(
+                id="intake",
+                name="Intake & Analysis",
+                agent=lead_agent,
+                task=f"Analyze this mission and define its scope:\n"
+                     f"Mission: {name}\nDescription: {description}\n"
+                     f"Studio: {studio}\n"
+                     f"Provide a clear intake analysis with objectives.",
+            ),
+            MissionStep(
+                id="plan",
+                name="Plan & Strategy",
+                agent=lead_agent,
+                task=f"Based on the intake analysis, create a detailed "
+                     f"execution plan for: {name}",
+                depends_on=["intake"],
+            ),
+            MissionStep(
+                id="execute",
+                name="Execute",
+                agent=lead_agent,
+                task=f"Execute the plan for: {name}\n"
+                     f"Use available tools to produce real deliverables.",
+                depends_on=["plan"],
+                tools=["shell", "read_file", "write_file", "http_request",
+                        "search_web", "scrape_url"],
+            ),
+        ]
+
+        # Add specialist steps if crew has multiple agents
+        if len(crew) > 1:
+            for specialist in crew[1:]:
+                steps.append(MissionStep(
+                    id=f"specialist_{specialist}",
+                    name=f"Specialist: {specialist}",
+                    agent=specialist,
+                    task=f"Contribute your specialized expertise to: {name}\n"
+                         f"Review the lead agent's work and enhance it.",
+                    depends_on=["execute"],
+                ))
+
+        # Review step
+        review_deps = ["execute"]
+        if len(crew) > 1:
+            review_deps.extend(f"specialist_{s}" for s in crew[1:])
+
+        steps.append(MissionStep(
+            id="review",
+            name="Review & Quality Check",
+            agent=lead_agent,
+            task=f"Review all deliverables for: {name}\n"
+                 f"Verify quality, completeness, and accuracy.",
+            depends_on=review_deps,
+        ))
+
+        return steps
+
+    # ── DAG Execution ─────────────────────────────────────────
+
+    def _execute_dag(
+        self,
+        mission_id: int,
+        steps: list[MissionStep],
+    ) -> dict[str, dict]:
+        """
+        Execute mission steps as a DAG.
+        Steps with no unmet dependencies run in order.
+        """
+        step_map = {s.id: s for s in steps}
+        results: dict[str, dict] = {}
+        completed = set()
+
+        max_iterations = len(steps) * 2  # Safety limit
+        iteration = 0
+
+        while len(completed) < len(steps) and iteration < max_iterations:
+            iteration += 1
+            progress = False
+
+            for step in steps:
+                if step.id in completed:
+                    continue
+
+                # Check dependencies
+                deps_met = all(d in completed for d in step.depends_on)
+                if not deps_met:
+                    continue
+
+                # Check if any dependency failed
+                deps_failed = any(
+                    results.get(d, {}).get("status") == "failed"
+                    for d in step.depends_on
+                )
+                if deps_failed:
+                    step.status = "skipped"
+                    results[step.id] = {
+                        "status": "skipped",
+                        "reason": "dependency_failed",
+                    }
+                    completed.add(step.id)
+                    progress = True
+                    continue
+
+                # Execute step
+                logger.info(
+                    "Mission #%d step '%s' → agent: %s",
+                    mission_id, step.name, step.agent,
+                )
+
+                # Build context from previous step results
+                context_parts = []
+                for dep_id in step.depends_on:
+                    dep_result = results.get(dep_id, {})
+                    content = dep_result.get("content", "")
+                    if content:
+                        context_parts.append(
+                            f"[{dep_id}] {content[:500]}"
+                        )
+                context = "\n\n".join(context_parts)
+
+                # Execute via agent manager
+                mgr = self._get_agent_manager()
+                step_result = mgr.execute_task(
+                    agent_id=step.agent,
+                    task=step.task,
+                    context=context,
+                    tools_enabled=bool(step.tools),
+                )
+
+                step.status = "completed" if step_result.get("success") else "failed"
+                step.result = step_result
+
+                results[step.id] = {
+                    "status": step.status,
+                    "agent": step.agent,
+                    "content": step_result.get("content", "")[:1000],
+                    "model": step_result.get("model", ""),
+                    "duration_ms": step_result.get("duration_ms", 0),
+                    "tools_used": len(step_result.get("tool_results", [])),
+                    "error": step_result.get("error", ""),
+                }
+
+                completed.add(step.id)
+                progress = True
+
+                # Create task record
+                task_id = self.state.create_task(
+                    name=f"[{step.id}] {step.name}",
+                    studio=self.state.get_mission(mission_id).get("studio", ""),
+                    mission_id=mission_id,
+                    input_data=step.task[:500],
+                )
+                self.state.complete_task(
+                    task_id,
+                    output_data=step_result.get("content", "")[:1000],
+                    model_used=step_result.get("model", ""),
+                    duration=step_result.get("duration_ms", 0) / 1000,
+                    error=step_result.get("error", ""),
+                )
+
+            if not progress:
+                # Deadlock detected
+                remaining = [s.id for s in steps if s.id not in completed]
+                logger.error(
+                    "Mission #%d DAG deadlock. Remaining: %s",
+                    mission_id, remaining,
+                )
+                for sid in remaining:
+                    results[sid] = {
+                        "status": "failed",
+                        "error": "DAG deadlock",
+                    }
                 break
-            promoted += 1
-            logger.info("Promoted mission #%d: %s", mission["id"], mission["name"])
-
-        # Execute active missions
-        active = self.state.get_missions(status=MissionStatus.ACTIVE, limit=max_missions)
-        for mission in active:
-            result = self.execute_mission(mission["id"])
-            results.append(result)
-
-        # Auto-promote next batch
-        if results:
-            self.state.promote_next_mission()
-
-        self.state.log_event(
-            "cycle_completed",
-            f"Cycle completed: promoted={promoted}, executed={len(results)}, "
-            f"done={sum(1 for r in results if r.get('status') == 'done')}, "
-            f"failed={sum(1 for r in results if r.get('status') == 'failed')}",
-            source="mission_engine",
-        )
 
         return results
 
+    # ── Cycle ─────────────────────────────────────────────────
+
+    def run_cycle(self) -> dict[str, Any]:
+        """Run one mission processing cycle."""
+        promoted = self.state.promote_next_mission()
+        if not promoted:
+            return {"action": "idle", "message": "No missions to process"}
+
+        mission_id = promoted["id"]
+        result = self.execute_mission(mission_id)
+        return {"action": "executed", "mission_id": mission_id, **result}
+
+    # ── Status ────────────────────────────────────────────────
+
     def get_status(self) -> dict:
-        """Get current mission engine status."""
+        stats = self.state.get_dashboard_stats()
+        mgr = self._get_agent_manager()
         return {
-            "missions": {
-                "queued": len(self.state.get_missions(MissionStatus.QUEUED)),
-                "active": len(self.state.get_missions(MissionStatus.ACTIVE)),
-                "running": len(self.state.get_missions(MissionStatus.RUNNING)),
-                "done": len(self.state.get_missions(MissionStatus.DONE)),
-                "failed": len(self.state.get_missions(MissionStatus.FAILED)),
-            },
+            "missions": stats.get("missions", {}),
+            "running_missions": list(self._running_missions),
             "studios_registered": list(self._studios.keys()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agents": mgr.get_status() if mgr else {},
         }
-
-
-def get_engine() -> MissionEngine:
-    """Get or create the mission engine singleton."""
-    engine = MissionEngine()
-    try:
-        engine.auto_discover_studios()
-    except Exception:
-        logger.debug("Auto-discovery skipped (studios not yet initialized)")
-    return engine

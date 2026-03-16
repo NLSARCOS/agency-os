@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""
+Agency OS v3.0 — OpenClaw Bridge
+
+Integration layer with OpenClaw gateway for:
+- Multi-model routing through the gateway
+- Session-isolated agent contexts
+- Multi-channel message handling (WhatsApp, Telegram, Discord, Slack, CLI)
+- Hybrid intelligence (complex → premium, simple → free/local)
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+import httpx
+
+from kernel.config import get_config
+
+logger = logging.getLogger("agency.openclaw")
+
+
+@dataclass
+class OpenClawConfig:
+    """OpenClaw connection configuration."""
+    gateway_url: str = "http://localhost:3000"
+    api_key: str = ""
+    default_agent: str = "agency-os"
+    timeout: float = 120.0
+    max_retries: int = 2
+
+
+@dataclass
+class ChatMessage:
+    """A message in OpenClaw format."""
+    role: str  # system, user, assistant
+    content: str
+    name: str = ""
+    tool_calls: list[dict] | None = None
+    tool_call_id: str = ""
+
+
+@dataclass
+class OpenClawResponse:
+    """Response from OpenClaw gateway."""
+    content: str
+    model: str = ""
+    provider: str = ""
+    tokens_in: int = 0
+    tokens_out: int = 0
+    latency_ms: float = 0
+    success: bool = True
+    error: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    session_id: str = ""
+    raw: dict = field(default_factory=dict)
+
+
+class OpenClawBridge:
+    """
+    Bridge between Agency OS and OpenClaw gateway.
+
+    OpenClaw handles:
+    - Model selection and routing (hybrid intelligence)
+    - Session management and memory
+    - Multi-channel input/output
+    - Tool sandboxing
+    - Authentication
+
+    Agency OS uses it as the unified AI backbone.
+    """
+
+    def __init__(self, config: OpenClawConfig | None = None) -> None:
+        cfg = get_config()
+        self._config = config or OpenClawConfig(
+            gateway_url=os.environ.get(
+                "OPENCLAW_URL", "http://localhost:3000"
+            ),
+            api_key=os.environ.get(
+                "OPENCLAW_API_KEY", ""
+            ),
+        )
+        self._client = httpx.Client(timeout=self._config.timeout)
+        self._sessions: dict[str, str] = {}  # agent_id → session_id
+        self._healthy = False
+        self._last_health_check = 0.0
+
+    # ── Health ────────────────────────────────────────────────
+
+    def is_available(self) -> bool:
+        """Check if OpenClaw gateway is reachable."""
+        now = time.monotonic()
+        if now - self._last_health_check < 30:
+            return self._healthy
+        try:
+            resp = self._client.get(
+                f"{self._config.gateway_url}/health",
+                timeout=5.0,
+            )
+            self._healthy = resp.status_code == 200
+        except Exception:
+            self._healthy = False
+        self._last_health_check = now
+        return self._healthy
+
+    # ── Chat Completion ───────────────────────────────────────
+
+    def chat(
+        self,
+        messages: list[ChatMessage],
+        model: str = "",
+        system: str = "",
+        agent_id: str = "",
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> OpenClawResponse:
+        """
+        Send a chat completion request through OpenClaw.
+
+        If OpenClaw is unavailable, falls back to direct API calls.
+        """
+        if not self.is_available():
+            logger.warning("OpenClaw unavailable, using direct fallback")
+            return self._direct_fallback(messages, model, system)
+
+        # Build request payload
+        msg_list = []
+        if system:
+            msg_list.append({"role": "system", "content": system})
+        for m in messages:
+            msg_dict: dict[str, Any] = {"role": m.role, "content": m.content}
+            if m.name:
+                msg_dict["name"] = m.name
+            if m.tool_calls:
+                msg_dict["tool_calls"] = m.tool_calls
+            if m.tool_call_id:
+                msg_dict["tool_call_id"] = m.tool_call_id
+            msg_list.append(msg_dict)
+
+        body: dict[str, Any] = {
+            "messages": msg_list,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if model:
+            body["model"] = model
+        if tools:
+            body["tools"] = tools
+
+        headers = {"Content-Type": "application/json"}
+        if self._config.api_key:
+            headers["Authorization"] = f"Bearer {self._config.api_key}"
+        if agent_id:
+            headers["X-Agent-ID"] = agent_id
+            session_id = self._sessions.get(agent_id, "")
+            if session_id:
+                headers["X-Session-ID"] = session_id
+
+        start = time.monotonic()
+        try:
+            resp = self._client.post(
+                f"{self._config.gateway_url}/v1/chat/completions",
+                headers=headers,
+                json=body,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            latency = (time.monotonic() - start) * 1000
+
+            # Extract response
+            choice = data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            usage = data.get("usage", {})
+
+            # Save session if returned
+            new_session = resp.headers.get("X-Session-ID", "")
+            if new_session and agent_id:
+                self._sessions[agent_id] = new_session
+
+            return OpenClawResponse(
+                content=message.get("content", ""),
+                model=data.get("model", model),
+                provider=data.get("provider", "openclaw"),
+                tokens_in=usage.get("prompt_tokens", 0),
+                tokens_out=usage.get("completion_tokens", 0),
+                latency_ms=latency,
+                tool_calls=message.get("tool_calls", []),
+                session_id=new_session,
+                raw=data,
+            )
+
+        except httpx.HTTPStatusError as e:
+            logger.error("OpenClaw HTTP error: %s", e)
+            return OpenClawResponse(
+                content="", success=False,
+                error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+                latency_ms=(time.monotonic() - start) * 1000,
+            )
+        except Exception as e:
+            logger.error("OpenClaw error: %s", e)
+            return OpenClawResponse(
+                content="", success=False, error=str(e),
+                latency_ms=(time.monotonic() - start) * 1000,
+            )
+
+    # ── Convenience Methods ───────────────────────────────────
+
+    def ask(
+        self,
+        prompt: str,
+        system: str = "",
+        model: str = "",
+        agent_id: str = "",
+    ) -> str:
+        """Simple ask → answer shortcut."""
+        resp = self.chat(
+            messages=[ChatMessage(role="user", content=prompt)],
+            system=system,
+            model=model,
+            agent_id=agent_id,
+        )
+        if not resp.success:
+            logger.error("Ask failed: %s", resp.error)
+            return ""
+        return resp.content
+
+    def ask_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict],
+        system: str = "",
+        model: str = "",
+        agent_id: str = "",
+    ) -> OpenClawResponse:
+        """Ask with tool-use support (function calling)."""
+        return self.chat(
+            messages=[ChatMessage(role="user", content=prompt)],
+            system=system,
+            model=model,
+            agent_id=agent_id,
+            tools=tools,
+        )
+
+    # ── Session Management ────────────────────────────────────
+
+    def get_session(self, agent_id: str) -> str:
+        return self._sessions.get(agent_id, "")
+
+    def clear_session(self, agent_id: str) -> None:
+        self._sessions.pop(agent_id, None)
+
+    def clear_all_sessions(self) -> None:
+        self._sessions.clear()
+
+    # ── Model Hints ───────────────────────────────────────────
+
+    @staticmethod
+    def model_for_complexity(complexity: str) -> str:
+        """Suggest a model based on task complexity."""
+        models = {
+            "simple": "",  # Let OpenClaw pick free/fast
+            "medium": "openrouter/stepfun/step-3.5-flash:free",
+            "complex": "claude-sonnet-4-20250514",
+            "critical": "claude-sonnet-4-20250514",
+            "code": "claude-sonnet-4-20250514",
+            "creative": "openrouter/stepfun/step-3.5-flash:free",
+        }
+        return models.get(complexity, "")
+
+    # ── Fallback ──────────────────────────────────────────────
+
+    def _direct_fallback(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        system: str,
+    ) -> OpenClawResponse:
+        """Direct API call when OpenClaw is unavailable."""
+        from kernel.model_router import get_model_router
+        router = get_model_router()
+        prompt = messages[-1].content if messages else ""
+        resp = router.call_model_sync(prompt=prompt, system=system)
+        return OpenClawResponse(
+            content=resp.content,
+            model=resp.model,
+            provider=resp.provider,
+            tokens_in=resp.tokens_in,
+            tokens_out=resp.tokens_out,
+            latency_ms=resp.latency_ms,
+            success=resp.success,
+            error=resp.error,
+        )
+
+    # ── Status ────────────────────────────────────────────────
+
+    def get_status(self) -> dict:
+        return {
+            "gateway_url": self._config.gateway_url,
+            "available": self.is_available(),
+            "active_sessions": len(self._sessions),
+            "sessions": dict(self._sessions),
+        }
+
+    def close(self) -> None:
+        self._client.close()
+
+
+def get_openclaw() -> OpenClawBridge:
+    return OpenClawBridge()

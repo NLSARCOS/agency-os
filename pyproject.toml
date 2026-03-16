@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agency-os"
-version = "0.5.0"
+version = "3.0.0"
 description = "Sistema Operativo de Agencia AI — Desarrollo, Marketing, Ventas, Prospección, ABM, Analytics, Creative"
 readme = "README.md"
 license = {text = "MIT"}

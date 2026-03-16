@@ -100,12 +100,65 @@ CREATE TABLE IF NOT EXISTS model_usage (
     timestamp TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS agent_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    mission_id INTEGER REFERENCES missions(id),
+    timestamp TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS workflow_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workflow_id TEXT NOT NULL,
+    mission_id INTEGER REFERENCES missions(id),
+    current_node TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    graph_def TEXT DEFAULT '{}',
+    node_results TEXT DEFAULT '{}',
+    checkpoint TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tool_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    agent_id TEXT DEFAULT '',
+    mission_id INTEGER REFERENCES missions(id),
+    params TEXT DEFAULT '{}',
+    output TEXT DEFAULT '',
+    success INTEGER DEFAULT 1,
+    error TEXT DEFAULT '',
+    duration_ms REAL DEFAULT 0,
+    timestamp TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS delegations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_agent TEXT NOT NULL,
+    to_agent TEXT NOT NULL,
+    task TEXT NOT NULL,
+    context TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    result TEXT DEFAULT '',
+    mission_id INTEGER REFERENCES missions(id),
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_studio ON tasks(studio);
 CREATE INDEX IF NOT EXISTS idx_kpis_studio ON kpis(studio);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_model_usage_model ON model_usage(model_name);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_state_mission ON workflow_state(mission_id);
+CREATE INDEX IF NOT EXISTS idx_tool_results_agent ON tool_results(agent_id);
+CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
 """
 
 
