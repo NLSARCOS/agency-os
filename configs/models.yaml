@@ -1,5 +1,6 @@
 # Agency OS — Model Configuration
 # Multi-provider AI model pools with fallback chains
+# Priority: OpenRouter Free (works with just OPENROUTER_API_KEY) → Premium (need keys)
 
 pools:
   leadops:
@@ -9,17 +10,17 @@ pools:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: kimi-k2.5
-      provider: ollama
-      tier: cloud
+    - name: openrouter/openai/gpt-oss-20b:free
+      provider: openrouter
+      tier: free
 
   marketing:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: kimi-k2.5
-      provider: ollama
-      tier: cloud
+    - name: openrouter/openai/gpt-oss-20b:free
+      provider: openrouter
+      tier: free
 
   sales:
     - name: openrouter/stepfun/step-3.5-flash:free
@@ -30,15 +31,21 @@ pools:
       tier: free
 
   dev:
+    - name: openrouter/openai/gpt-oss-20b:free
+      provider: openrouter
+      tier: free
+    - name: openrouter/stepfun/step-3.5-flash:free
+      provider: openrouter
+      tier: free
+    - name: openrouter/arcee-ai/trinity-mini:free
+      provider: openrouter
+      tier: free
     - name: claude-sonnet-4-20250514
       provider: anthropic
       tier: premium
     - name: gpt-4o
       provider: openai
       tier: premium
-    - name: kimi-k2.5
-      provider: ollama
-      tier: cloud
 
   abm:
     - name: openrouter/arcee-ai/trinity-mini:free
@@ -52,17 +59,17 @@ pools:
     - name: openrouter/arcee-ai/trinity-mini:free
       provider: openrouter
       tier: free
-    - name: kimi-k2.5
-      provider: ollama
-      tier: cloud
+    - name: openrouter/openai/gpt-oss-20b:free
+      provider: openrouter
+      tier: free
 
   creative:
     - name: openrouter/stepfun/step-3.5-flash:free
       provider: openrouter
       tier: free
-    - name: kimi-k2.5
-      provider: ollama
-      tier: cloud
+    - name: openrouter/openai/gpt-oss-20b:free
+      provider: openrouter
+      tier: free
 
 # Provider endpoints (override defaults)
 endpoints:
