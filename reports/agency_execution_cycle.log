@@ -1,0 +1,124 @@
+[dom 15 mar 2026 23:20:01 -05] exec:start
+clean_total 1273
+top_total 871
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[dom 15 mar 2026 23:22:51 -05] exec:end
+[dom 15 mar 2026 23:40:01 -05] exec:start
+clean_total 1273
+top_total 871
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[dom 15 mar 2026 23:41:05 -05] exec:end
+[lun 16 mar 2026 00:00:01 -05] exec:start
+clean_total 1499
+top_total 1073
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 00:01:12 -05] exec:end
+[lun 16 mar 2026 00:20:01 -05] exec:start
+clean_total 1547
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 00:23:34 -05] exec:end
+[lun 16 mar 2026 00:40:01 -05] exec:start
+mv: no se puede efectuar `stat' sobre '/home/nelson/.openclaw/workspace/leads/medical_queries_queue.txt.tmp': No existe el archivo o el directorio
+clean_total 1514
+top_total 1089
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 00:40:01 -05] exec:end
+[lun 16 mar 2026 01:00:01 -05] exec:start
+mv: no se puede efectuar `stat' sobre '/home/nelson/.openclaw/workspace/leads/medical_queries_queue.txt.tmp': No existe el archivo o el directorio
+clean_total 1515
+top_total 1089
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 01:00:02 -05] exec:end
+[lun 16 mar 2026 01:20:01 -05] exec:start
+clean_total 1521
+top_total 1095
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 01:23:18 -05] exec:end
+[lun 16 mar 2026 01:40:01 -05] exec:start
+clean_total 1521
+top_total 1095
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 01:40:57 -05] exec:end
+[lun 16 mar 2026 02:00:01 -05] exec:start
+clean_total 1535
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 02:01:09 -05] exec:end
+[lun 16 mar 2026 02:20:01 -05] exec:start
+clean_total 1546
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 02:22:18 -05] exec:end
+[lun 16 mar 2026 02:40:01 -05] exec:start
+clean_total 1546
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 02:41:16 -05] exec:end
+[lun 16 mar 2026 03:00:01 -05] exec:start
+clean_total 1546
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 03:00:59 -05] exec:end
+[lun 16 mar 2026 03:20:01 -05] exec:start
+clean_total 1547
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 03:22:12 -05] exec:end
+[lun 16 mar 2026 03:40:01 -05] exec:start
+mv: no se puede efectuar `stat' sobre '/home/nelson/.openclaw/workspace/leads/medical_queries_queue.txt.tmp': No existe el archivo o el directorio
+clean_total 1547
+top_total 1113
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 03:40:02 -05] exec:end
+[lun 16 mar 2026 04:00:01 -05] exec:start
+mv: no se puede efectuar `stat' sobre '/home/nelson/.openclaw/workspace/leads/medical_queries_queue.txt.tmp': No existe el archivo o el directorio
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 04:00:01 -05] exec:end
+[lun 16 mar 2026 04:20:01 -05] exec:start
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 04:22:32 -05] exec:end
+[lun 16 mar 2026 04:40:01 -05] exec:start
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 04:41:02 -05] exec:end
+[lun 16 mar 2026 05:00:01 -05] exec:start
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 05:01:08 -05] exec:end
+[lun 16 mar 2026 05:20:01 -05] exec:start
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 05:22:47 -05] exec:end
+[lun 16 mar 2026 05:40:01 -05] exec:start
+clean_total 1538
+top_total 1102
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 05:40:56 -05] exec:end
+[lun 16 mar 2026 06:00:01 -05] exec:start
+clean_total 1542
+top_total 1103
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 06:00:59 -05] exec:end
+[lun 16 mar 2026 06:20:01 -05] exec:start
+clean_total 1549
+top_total 1108
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 06:23:07 -05] exec:end
+[lun 16 mar 2026 06:40:01 -05] exec:start
+clean_total 1550
+top_total 1109
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 06:40:51 -05] exec:end
+[lun 16 mar 2026 07:00:01 -05] exec:start
+clean_total 1551
+top_total 1109
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 07:01:22 -05] exec:end

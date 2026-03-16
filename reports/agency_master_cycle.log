@@ -1,0 +1,30 @@
+[dom 15 mar 2026 23:00:01 -05] cycle:start
+deep_scan 25 new_rows 87
+deep_scan 50 new_rows 174
+deep_scan 75 new_rows 328
+deep_scan 100 new_rows 482
+deep_scan 125 new_rows 661
+deep_scan 150 new_rows 871
+deep_scan 175 new_rows 950
+deep_scan 200 new_rows 1112
+deep_scan 225 new_rows 1265
+deep_scan 250 new_rows 1429
+deep_scan 275 new_rows 1501
+deep_scan 300 new_rows 1585
+deep_scan 325 new_rows 1678
+deep_scan 350 new_rows 1763
+final_rows 1533
+unique_emails 1514
+roots_scanned 350
+clean_total 1514
+top_total 1089
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+unique_before 1287
+unique_after 1514
+net_growth 227
+raw_before 7784
+raw_after 1533
+clean_total 1514
+top_total 1089
+report /home/nelson/.openclaw/workspace/agency-v1/reports/delivery_report.md
+[lun 16 mar 2026 00:29:16 -05] cycle:end

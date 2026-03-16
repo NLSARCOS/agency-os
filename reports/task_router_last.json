@@ -1,0 +1,9 @@
+{
+  "task": "scraping de leads m\u00e9dicos ecuador",
+  "studio": "leadops",
+  "models": [
+    "kimi-k2.5:cloud",
+    "openrouter/arcee-ai/trinity-mini:free",
+    "minimax-m2.5:cloud"
+  ]
+}
