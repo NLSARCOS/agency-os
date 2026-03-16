@@ -53,6 +53,46 @@ class AgencyHeartbeat:
         self.last_evolution: float = 0
         self.is_running: bool = False
 
+    # ── i18n messages ────────────────────────────────────────
+    _MESSAGES = {
+        "en": {
+            "activated_title": "🫀 Agency Heartbeat Activated",
+            "activated_body": (
+                "I am now alive and running autonomously 24/7.\n"
+                "- Hustling every {hustle}h.\n"
+                "- Self-evolving every {evolve}h.\n"
+                "- Monitoring agent performance."
+            ),
+            "hustle_title": "💼 Hustle Cycle Complete",
+            "hustle_body": (
+                "I proactively searched for business and found "
+                "**{count}** new opportunities awaiting your approval.\n\n"
+                "Use `agency pipeline` or the Initiative Engine to review."
+            ),
+        },
+        "es": {
+            "activated_title": "🫀 Latido de Agencia Activado",
+            "activated_body": (
+                "Estoy viva y operando de forma autónoma 24/7.\n"
+                "- Buscando oportunidades cada {hustle}h.\n"
+                "- Auto-evolucionando cada {evolve}h.\n"
+                "- Monitoreando rendimiento de agentes."
+            ),
+            "hustle_title": "💼 Ciclo de Búsqueda Completado",
+            "hustle_body": (
+                "Busqué proactivamente oportunidades de negocio y encontré "
+                "**{count}** nuevas esperando tu aprobación.\n\n"
+                "Usa `agency pipeline` o el Motor de Iniciativa para revisarlas."
+            ),
+        },
+    }
+
+    def _msg(self, key: str, **kwargs: object) -> str:
+        lang = self.cfg.language
+        msgs = self._MESSAGES.get(lang, self._MESSAGES["en"])
+        template = msgs.get(key, self._MESSAGES["en"][key])
+        return template.format(**kwargs) if kwargs else template
+
     async def run(self) -> None:
         """Start the infinite vitality loop."""
         if self.is_running:
@@ -67,11 +107,12 @@ class AgencyHeartbeat:
         )
         
         self._notifier.notify(
-            title="🫀 Agency Heartbeat Activated",
-            message=f"I am now alive and running autonomously 24/7.\n"
-                    f"- Hustling every {self.config.hustle_interval_hours} hours.\n"
-                    f"- Self-evolving every {self.config.evolution_interval_hours} hours.\n"
-                    f"- Monitoring agent performance.",
+            title=self._msg("activated_title"),
+            message=self._msg(
+                "activated_body",
+                hustle=self.config.hustle_interval_hours,
+                evolve=self.config.evolution_interval_hours,
+            ),
             source="heartbeat",
             priority=NotificationPriority.NORMAL,
         )
@@ -115,9 +156,8 @@ class AgencyHeartbeat:
             
             if pending > 0:
                 self._notifier.notify(
-                    title="💼 Hustle Cycle Complete",
-                    message=f"I proactively searched for business and found **{pending}** new opportunities awaiting your approval.\n\n"
-                            f"Use `agency pipeline` or the Initiative Engine to review.",
+                    title=self._msg("hustle_title"),
+                    message=self._msg("hustle_body", count=pending),
                     source="heartbeat",
                     priority=NotificationPriority.NORMAL,
                 )

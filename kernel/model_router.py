@@ -217,6 +217,9 @@ class ModelRouter:
         key_name = PROVIDER_KEY_MAP.get(provider, provider)
         api_key = self._cfg.api_keys.get(key_name, "")
 
+        # Strip provider prefix from model name (e.g. "openrouter/openai/gpt-4o" → "openai/gpt-4o")
+        api_model = model.removeprefix(f"{provider}/") if model.startswith(f"{provider}/") else model
+
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         if provider == "openrouter":
             headers["HTTP-Referer"] = "https://agency-os.local"
@@ -229,7 +232,7 @@ class ModelRouter:
         resp = self._client.post(
             endpoint,
             headers=headers,
-            json={"model": model, "messages": messages},
+            json={"model": api_model, "messages": messages},
         )
         resp.raise_for_status()
         data = resp.json()
