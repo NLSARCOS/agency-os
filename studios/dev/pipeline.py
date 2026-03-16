@@ -88,31 +88,60 @@ class Studio(BaseStudio):
         }
 
     def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
-        """Execute the dev pipeline using AI model calls."""
+        """Execute the dev pipeline with real tool integration."""
+        task_type = plan["type"]
+
+        # Gather real project context
+        git_context = self._get_git_context()
+
         skills_context = "\n".join(
             self.get_skill_content(s)[:500] for s in self.skills_refs[:2]
         )
 
         prompt = (
             f"## Dev Task\n"
-            f"**Type:** {plan['type']}\n"
+            f"**Type:** {task_type}\n"
             f"**Task:** {plan['task']}\n"
             f"**Description:** {plan.get('description', 'N/A')}\n\n"
+            f"## Git Context\n{git_context}\n\n"
             f"## Execution Steps\n"
             + "\n".join(f"- {s}" for s in plan["steps"])
             + f"\n\n## Skills Context\n{skills_context[:1000]}\n\n"
-            f"Execute this task step by step. Provide concrete, actionable output."
+            f"Execute this task step by step. Provide concrete, actionable output "
+            f"with code snippets, file changes, and commands to run."
         )
 
         output = self.ai_call(prompt, task_id=task_id)
+        path = self.save_output(f"{task_type}_{plan['task'][:30].replace(' ', '_')}.md", output)
 
         return {
             "output": output,
             "type": plan["type"],
             "steps_executed": plan["steps"],
             "model_used": self.name,
+            "artifacts": [str(path)],
             "kpis": [
                 {"name": "tasks_completed", "value": 1, "unit": "count"},
                 {"name": f"{plan['type']}_completed", "value": 1, "unit": "count"},
             ],
         }
+
+    def _get_git_context(self) -> str:
+        """Get real git context from the project."""
+        parts = []
+        try:
+            status = self.shell("git status --short", cwd=str(self.cfg.root))
+            if status and not status.startswith("Error"):
+                parts.append(f"**Modified files:**\n```\n{status[:500]}\n```")
+
+            branch = self.shell("git branch --show-current", cwd=str(self.cfg.root))
+            if branch and not branch.startswith("Error"):
+                parts.append(f"**Branch:** {branch.strip()}")
+
+            log = self.shell("git log --oneline -5", cwd=str(self.cfg.root))
+            if log and not log.startswith("Error"):
+                parts.append(f"**Recent commits:**\n```\n{log[:300]}\n```")
+        except Exception:
+            parts.append("Git context unavailable")
+
+        return "\n".join(parts) if parts else "No git context"

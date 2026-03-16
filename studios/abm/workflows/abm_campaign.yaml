@@ -1,0 +1,58 @@
+# ABM — Account-Based Marketing Workflow
+id: abm_campaign
+name: "ABM Campaign Workflow"
+description: "Full ABM cycle: ICP definition, targeting, personalization, execution"
+version: "1.0"
+
+nodes:
+  - id: icp_definition
+    name: "ICP Definition"
+    type: agent
+    agent: product-manager
+    task: |
+      Define the Ideal Customer Profile (ICP):
+      - Firmographic criteria (industry, size, revenue, geography)
+      - Technographic signals (tech stack, tools used)
+      - Intent signals (buying indicators)
+      - Decision-maker personas (titles, responsibilities)
+
+  - id: account_research
+    name: "Account Research"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Research target accounts using web scraping:
+      - Company profiles and recent news
+      - Key decision makers and org structure
+      - Trigger events and timing opportunities
+      - Competitive landscape
+    depends_on: [icp_definition]
+
+  - id: personalization
+    name: "Content Personalization"
+    type: agent
+    agent: frontend-specialist
+    task: |
+      Create personalized content for each account tier:
+      - Tier 1: Fully custom landing pages and content
+      - Tier 2: Semi-personalized templates
+      - Tier 3: Automated personalization
+    depends_on: [account_research]
+
+  - id: approval
+    name: "Campaign Approval"
+    type: human
+    task: "Review the ABM campaign materials and account targeting. Approve to launch."
+    depends_on: [personalization]
+
+  - id: launch
+    name: "Campaign Launch"
+    type: agent
+    agent: product-owner
+    task: |
+      Execute the ABM campaign launch:
+      - Activate personalized content
+      - Start outreach sequences
+      - Set up tracking and attribution
+      - Schedule follow-ups
+    depends_on: [approval]

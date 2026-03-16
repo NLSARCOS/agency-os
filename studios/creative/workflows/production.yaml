@@ -1,0 +1,69 @@
+# Creative — Content Production Workflow
+id: creative_production
+name: "Creative Production Pipeline"
+description: "Full content creation: brief, create, review, deliver"
+version: "1.0"
+
+nodes:
+  - id: brief
+    name: "Creative Brief"
+    type: agent
+    agent: product-manager
+    task: |
+      Create a detailed creative brief:
+      - Objective and target audience
+      - Key messaging and tone of voice
+      - Format requirements (dimensions, length)
+      - Brand guidelines to follow
+      - Reference examples and inspiration
+
+  - id: research
+    name: "Competitive Research"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Research competitor content and industry trends:
+      - Analyze top-performing competitor content
+      - Identify content gaps and opportunities
+      - Collect inspiration and reference materials
+    depends_on: [brief]
+
+  - id: create
+    name: "Content Creation"
+    type: agent
+    agent: frontend-specialist
+    task: |
+      Create the content based on the brief and research:
+      - Write compelling copy (headlines, body, CTA)
+      - If landing page: create full HTML/CSS
+      - If email: create responsive template
+      - If social: create platform-specific posts
+      Apply AIDA framework and design best practices.
+    depends_on: [research]
+    max_retries: 3
+
+  - id: quality_check
+    name: "Quality Check"
+    type: condition
+    condition: "len(create.get('content', '')) > 200"
+    on_success: review
+    on_failure: create
+    depends_on: [create]
+
+  - id: review
+    name: "Creative Review"
+    type: human
+    task: "Review the creative deliverable. Approve for delivery or request revisions."
+    depends_on: [quality_check]
+
+  - id: deliver
+    name: "Final Delivery"
+    type: agent
+    agent: product-owner
+    task: |
+      Package the final deliverable:
+      - Format for all required sizes/platforms
+      - Create asset inventory list
+      - Document usage guidelines
+      - Save to output directory
+    depends_on: [review]

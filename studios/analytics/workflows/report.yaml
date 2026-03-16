@@ -1,0 +1,55 @@
+# Analytics — Reporting Workflow
+id: analytics_report
+name: "Analytics Report Pipeline"
+description: "Collect, analyze, visualize, and distribute performance data"
+version: "1.0"
+
+nodes:
+  - id: collect
+    name: "Data Collection"
+    type: tool
+    tool: db_query
+    agent: backend-specialist
+    params:
+      query: "SELECT studio, metric_name, metric_value, unit, created_at FROM kpis ORDER BY created_at DESC LIMIT 100"
+
+  - id: analyze
+    name: "Data Analysis"
+    type: agent
+    agent: backend-specialist
+    task: |
+      Analyze the collected KPI data:
+      - Calculate period-over-period changes
+      - Identify trends and anomalies
+      - Top and bottom performers by studio
+      - Recommend optimization targets
+    depends_on: [collect]
+
+  - id: visualize
+    name: "Report Generation"
+    type: agent
+    agent: frontend-specialist
+    task: |
+      Create a visual analytics report:
+      - Executive summary dashboard
+      - Studio-by-studio performance
+      - KPI trend charts (describe as markdown tables)
+      - Actionable insights and recommendations
+    depends_on: [analyze]
+
+  - id: review
+    name: "Report Review"
+    type: human
+    task: "Review the analytics report before distribution."
+    depends_on: [visualize]
+
+  - id: distribute
+    name: "Report Distribution"
+    type: agent
+    agent: product-owner
+    task: |
+      Prepare the report for distribution:
+      - Save to reports directory
+      - Create exec summary version
+      - List of stakeholders to notify
+    depends_on: [review]
