@@ -327,6 +327,16 @@ class ProjectManager:
             },
         ))
 
+        # ── AUTO DEPLOYMENT ──
+        if project.status == "completed":
+            try:
+                from kernel.deployment_engine import get_deployment_engine
+                de = get_deployment_engine()
+                # Deploy the current workspace/root
+                de.deploy(str(self.cfg.root))
+            except Exception as e:
+                logger.error("Auto-deployment failed at end of project: %s", e)
+
         logger.info(
             "Project [%s] %s: %d/%d phases completed in %.0fms",
             project.id, project.status,

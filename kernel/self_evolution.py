@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -435,11 +436,62 @@ skills:
             )
             proposal.status = "pushed"
 
+        # 5.5 Auto-Merge (if tests pass)
+        if proposal.status == "pr_created":
+            self._run_tests_and_merge(branch, proposal, cwd)
+
         # 6. Return to main
         self._run_git("git checkout main", cwd)
 
         self._proposals.append(proposal)
         return proposal.pr_url or f"Branch: {branch}"
+
+    def _run_tests_and_merge(self, branch: str, proposal: EvolutionProposal, cwd: str) -> None:
+        """Run tests on the current branch. If they pass, auto-merge the PR."""
+        from kernel.notifier import get_notifier, NotificationPriority
+        notifier = get_notifier()
+        
+        logger.info("Running automated verification tests for evolution PR...")
+        try:
+            # Run the test suite
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "tests/test_kernel.py", "-q"],
+                capture_output=True, text=True,
+                cwd=cwd, timeout=60,
+            )
+            
+            if result.returncode == 0:
+                logger.info("Tests passed. Auto-merging PR...")
+                # Merge the PR
+                merge_result = subprocess.run(
+                    ["gh", "pr", "merge", branch, "--merge", "--delete-branch"],
+                    capture_output=True, text=True,
+                    cwd=cwd, timeout=30,
+                )
+                if merge_result.returncode == 0:
+                    proposal.status = "merged"
+                    notifier.send(
+                        title="🧬 Evolution Auto-Merged",
+                        message=f"I successfully evolved and merged the PR on branch `{branch}`.\n\n"
+                                f"**Changes:** {proposal.title}\n\nAll tests passed with 100% success.",
+                        source="self_evolution",
+                        priority=NotificationPriority.NORMAL,
+                    )
+                else:
+                    logger.warning("Auto-merge failed: %s", merge_result.stderr)
+            else:
+                logger.warning("Tests failed. PR %s left open for review.", branch)
+                notifier.send(
+                    title="⚠️ Evolution Tests Failed",
+                    message=f"I created a PR for `{proposal.title}`, but the tests failed. "
+                            f"I need your human review to fix the issues.\n\n"
+                            f"**Branch:** `{branch}`\n"
+                            f"**Log:**\n```\n{result.stdout[-500:]}\n```",
+                    source="self_evolution",
+                    priority=NotificationPriority.HIGH,
+                )
+        except Exception as e:
+            logger.error("Auto-merge process encountered an error: %s", e)
 
     def _run_git(self, command: str, cwd: str) -> str:
         """Run a git command safely."""
