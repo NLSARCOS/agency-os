@@ -1,0 +1,18 @@
+# Agency OS — Schedule Configuration
+# Defines the automated job schedule
+
+jobs:
+  - name: mission_cycle
+    description: Execute pending missions from the queue
+    interval_minutes: 20
+    function: "kernel.scheduler:run_cycle"
+
+  - name: report_generation
+    description: Generate system status report
+    interval_minutes: 240
+    function: "kernel.reporter:generate_report"
+
+  - name: health_check
+    description: System health check
+    interval_minutes: 60
+    function: "kernel.scheduler:health_check"

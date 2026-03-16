@@ -1,33 +1,18 @@
-# Python
+# Agency OS
+.env
+.venv/
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.venv/
-venv/
-
-# Node
-node_modules/
-
-# OS / editors
-.DS_Store
-.vscode/
-.idea/
-
-# Logs / runtime state
+*.egg-info/
+dist/
+build/
+data/agency.db
+data/*.csv
+logs/
 reports/*.log
-reports/*.json
-reports/*_journal.md
-reports/agency_report_4h.md
-kernel/current_task.md
-kernel/system_state.md
-
-# Secrets / env
-.env
-.env.*
-configs/*.local
-
-# Temporary files
-*.tmp
-*.bak
-*.swp
+reports/report_*.md
+reports/latest_report.md
+*.log
+.DS_Store
+node_modules/
