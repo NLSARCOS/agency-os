@@ -431,8 +431,58 @@ info "  OPENCLAW_URL=$OPENCLAW_URL"
 info "  OLLAMA_HOST=$OLLAMA_HOST"
 info "  LM_STUDIO_URL=$LMSTUDIO_URL"
 
-# ── 7. Verify Installation ──────────────────────────────
-header "7/7  Verification"
+# ── 7. OpenClaw ↔ Agency OS Integration ──────────────────
+header "7/8  OpenClaw Integration (Bidirectional Communication)"
+
+OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
+OPENCLAW_SKILLS="$OPENCLAW_WORKSPACE/skills"
+SOUL_FILE="$OPENCLAW_WORKSPACE/SOUL.md"
+SKILL_SOURCE="$PROJECT_ROOT/install/openclaw/AGENCY_OS_SKILL.md"
+SOUL_PATCH="$PROJECT_ROOT/install/openclaw/SOUL_PATCH.md"
+
+if [ -d "$OPENCLAW_WORKSPACE" ]; then
+    # 1. Copy Agency OS Skill
+    mkdir -p "$OPENCLAW_SKILLS"
+    if [ -f "$SKILL_SOURCE" ]; then
+        cp "$SKILL_SOURCE" "$OPENCLAW_SKILLS/AGENCY_OS_SKILL.md"
+        ok "Installed AGENCY_OS_SKILL.md into OpenClaw workspace"
+    else
+        warn "AGENCY_OS_SKILL.md not found in install/openclaw/"
+    fi
+
+    # 2. Patch SOUL.md with Agency OS section (if not already patched)
+    if [ -f "$SOUL_FILE" ]; then
+        if ! grep -q "Modo Agencia" "$SOUL_FILE" 2>/dev/null; then
+            # Add Agency OS to Modo Directo
+            if grep -q "Modo Directo" "$SOUL_FILE" 2>/dev/null; then
+                sed -i '/Modo Directo/,/^###/{
+                    /^- \*\*Archivos\*\*/i\- **Agency OS**: `shell` → `cd '"$PROJECT_ROOT"' \&\& source .venv/bin/activate \&\& agency <cmd>`
+                }' "$SOUL_FILE"
+            fi
+
+            # Add Modo Agencia section after Modo Directo
+            AGENCY_SECTION="\n### 🏢 Modo Agencia (Agency OS)\nEres también una **agencia autónoma de desarrollo y marketing** que opera 24/7.\nCuando Nelson hable de negocio, clientes, proyectos, oportunidades, deployment o pipeline:\n1. Lee \`AGENCY_OS_SKILL.md\` si no la has leído ya\n2. Ejecuta los comandos del CLI de Agency OS\n3. Puedes delegar trabajo a sub-agentes en paralelo (dev, marketing, sales)\n4. Reporta resultados por Telegram\n5. Escríbele proactivamente cuando tengas resultados o necesites autorización\n"
+            sed -i '/Modo Equipo/i\'"$AGENCY_SECTION" "$SOUL_FILE" 2>/dev/null || true
+
+            # Add to Skills table
+            if grep -q "GOOGLE_API_SKILL" "$SOUL_FILE" 2>/dev/null; then
+                sed -i '/GOOGLE_API_SKILL/i\| `AGENCY_OS_SKILL.md` | Negocio, clientes, pipeline, deploy, proyectos, agencia |' "$SOUL_FILE"
+            fi
+
+            ok "Patched SOUL.md with Agency OS integration"
+        else
+            info "SOUL.md already has Agency OS integration"
+        fi
+    else
+        warn "SOUL.md not found — create it in OpenClaw workspace"
+    fi
+else
+    info "OpenClaw workspace not found — skipping integration"
+    info "Install OpenClaw first, then re-run setup to integrate"
+fi
+
+# ── 8. Verify Installation ──────────────────────────────
+header "8/8  Verification"
 
 info "Testing Agency OS..."
 
