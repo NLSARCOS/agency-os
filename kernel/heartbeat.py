@@ -66,7 +66,7 @@ class AgencyHeartbeat:
             f"Evolve: {self.config.evolution_interval_hours}h]"
         )
         
-        self._notifier.send(
+        self._notifier.notify(
             title="🫀 Agency Heartbeat Activated",
             message=f"I am now alive and running autonomously 24/7.\n"
                     f"- Hustling every {self.config.hustle_interval_hours} hours.\n"
@@ -114,7 +114,7 @@ class AgencyHeartbeat:
             pending = len(res.get("pending_approval", []))
             
             if pending > 0:
-                self._notifier.send(
+                self._notifier.notify(
                     title="💼 Hustle Cycle Complete",
                     message=f"I proactively searched for business and found **{pending}** new opportunities awaiting your approval.\n\n"
                             f"Use `agency pipeline` or the Initiative Engine to review.",
