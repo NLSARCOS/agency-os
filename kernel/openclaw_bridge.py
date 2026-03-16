@@ -88,6 +88,7 @@ class OpenClawBridge:
         self._sessions: dict[str, str] = {}  # agent_id → session_id
         self._healthy = False
         self._last_health_check = 0.0
+        self._gateway_has_rest = True  # assume REST until proven otherwise
 
     # ── Health ────────────────────────────────────────────────
 
@@ -122,10 +123,15 @@ class OpenClawBridge:
         """
         Send a chat completion request through OpenClaw.
 
-        If OpenClaw is unavailable, falls back to direct API calls.
+        Strategy:
+        1. If gateway has REST API → use /v1/chat/completions
+        2. If gateway is WebSocket-only (404) → auto-fallback to direct API
+        3. If gateway is down → auto-fallback to direct API
         """
-        if not self.is_available():
-            logger.warning("OpenClaw unavailable, using direct fallback")
+        # Fast path: gateway is WebSocket-only, skip HTTP attempt
+        if not self._gateway_has_rest or not self.is_available():
+            if not self.is_available():
+                logger.debug("OpenClaw gateway down, using direct API")
             return self._direct_fallback(messages, model, system)
 
         # Build request payload
@@ -195,6 +201,14 @@ class OpenClawBridge:
             )
 
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Gateway is WebSocket-only; remember and fall back
+                self._gateway_has_rest = False
+                logger.info(
+                    "OpenClaw gateway is WebSocket-only (no /v1/chat/completions). "
+                    "Switching to direct API for all future calls."
+                )
+                return self._direct_fallback(messages, model, system)
             logger.error("OpenClaw HTTP error: %s", e)
             return OpenClawResponse(
                 content="", success=False,
