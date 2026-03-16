@@ -463,15 +463,28 @@ ENTRY
         done
     fi
 
-    # 2. OpenClaw models (uses OAuth, no API key cost)
+    # 2. OpenClaw models via OAuth (free — uses ChatGPT subscription)
     if [ "$OPENCLAW_FOUND" = true ]; then
+        # Only include models from providers using openai-codex OAuth auth
+        # (these don't require API keys — they use your ChatGPT subscription)
         OPENCLAW_MODELS=$(python3 -c "
 import json
 try:
     cfg = json.load(open('$HOME/.openclaw/openclaw.json'))
-    for prov in cfg.get('models',{}).get('providers',{}).values():
-        for m in prov.get('models',[]):
-            print(m['id'])
+    # Find which auth profiles use openai-codex OAuth
+    oauth_providers = set()
+    for name, profile in cfg.get('auth',{}).get('profiles',{}).items():
+        if profile.get('provider') == 'openai-codex' and profile.get('mode') == 'oauth':
+            oauth_providers.add(name.split(':')[0])
+    # Get models from providers that match oauth auth, or 'openai-direct' which shares the auth
+    for pname, prov in cfg.get('models',{}).get('providers',{}).items():
+        # Include if provider name contains 'openai-direct' (shares codex OAuth)
+        if pname in ('openai-direct',) or pname in oauth_providers:
+            for m in prov.get('models',[]):
+                mid = m.get('id','')
+                # Only codex and gpt-5.x models (not o1, o3-mini which may have separate billing)
+                if 'codex' in mid or 'gpt-5' in mid:
+                    print(mid)
 except: pass
 " 2>/dev/null)
         if [ -n "$OPENCLAW_MODELS" ]; then
@@ -483,6 +496,7 @@ except: pass
       tier: openclaw
 ENTRY
             done <<< "$OPENCLAW_MODELS"
+            info "  🐙 OpenClaw OAuth models: $OPENCLAW_MODELS"
         fi
     fi
     if [ -n "$EXISTING_OPENROUTER" ]; then
