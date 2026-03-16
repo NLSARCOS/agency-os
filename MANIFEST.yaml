@@ -1,0 +1,150 @@
+name: agency-os
+version: "5.0"
+description: >
+  AI Agency Operating System. A real agency that BUILDS products —
+  not just advises. Autonomous execution with AI-powered studios.
+
+# ── Studios (what Agency OS can do) ───────────────────────
+studios:
+  - name: dev
+    description: "Build software: websites, APIs, apps, scripts. Creates real files and deploys."
+    capabilities:
+      - "Create web applications (HTML, CSS, JS, React, Next.js)"
+      - "Build REST/GraphQL APIs"
+      - "Fix bugs and refactor code"
+      - "Write and run tests"
+      - "Deploy to production"
+      - "Git commit and push to GitHub"
+    tools: [shell, write_file, read_file, git, web_search, scrape_url]
+    agent: backend-specialist
+    skills: [clean-code, api-patterns, testing-patterns, architecture]
+
+  - name: marketing
+    description: "Create marketing campaigns, content, SEO strategies, social media plans."
+    capabilities:
+      - "Campaign strategy and execution plans"
+      - "Content creation (blog posts, emails, social media)"
+      - "SEO analysis and optimization"
+      - "Competitor research"
+      - "Brand messaging"
+    tools: [web_search, scrape_url, write_file]
+    agent: marketing-specialist
+    skills: [seo-fundamentals, geo-fundamentals]
+
+  - name: sales
+    description: "Sales outreach, proposals, follow-ups, CRM pipeline management."
+    capabilities:
+      - "Cold outreach templates personalized to prospects"
+      - "Sales proposals and pitch decks"
+      - "Follow-up sequences"
+      - "Objection handling scripts"
+      - "Pipeline analysis"
+    tools: [web_search, scrape_url, write_file]
+    agent: sales-specialist
+
+  - name: leadops
+    description: "Lead generation, scraping, enrichment, and qualification."
+    capabilities:
+      - "Lead scraping from web sources"
+      - "Contact enrichment (email, company, role)"
+      - "Lead scoring and qualification"
+      - "List building"
+    tools: [web_search, scrape_url, write_file, shell]
+    agent: leadops-specialist
+
+  - name: analytics
+    description: "Data analysis, reporting, KPI dashboards, business intelligence."
+    capabilities:
+      - "Data analysis and visualization"
+      - "KPI tracking and reporting"
+      - "Trend analysis"
+      - "Performance metrics"
+    tools: [read_file, write_file, shell]
+    agent: analytics-specialist
+
+  - name: creative
+    description: "Creative direction, brand guidelines, design briefs."
+    capabilities:
+      - "Brand identity guidelines"
+      - "Creative briefs"
+      - "Content strategy"
+      - "Visual direction documents"
+    tools: [web_search, write_file]
+    agent: creative-director
+
+  - name: abm
+    description: "Account-based marketing: targeting, personalization, outreach."
+    capabilities:
+      - "Target account research"
+      - "Personalized outreach per account"
+      - "Multi-channel engagement plans"
+      - "Account scoring"
+    tools: [web_search, scrape_url, write_file]
+    agent: abm-specialist
+
+# ── Tools (what studios can use) ──────────────────────────
+tools:
+  - name: shell
+    description: "Execute system commands safely (whitelisted)"
+    permissions: [execute]
+  - name: write_file
+    description: "Create and write files on disk"
+    permissions: [filesystem]
+  - name: read_file
+    description: "Read file contents"
+    permissions: [filesystem]
+  - name: git
+    description: "Git operations: add, commit, push, status"
+    permissions: [execute, filesystem]
+  - name: web_search
+    description: "Search the web via Brave API"
+    permissions: [network]
+  - name: scrape_url
+    description: "Extract text content from URLs"
+    permissions: [network]
+  - name: http_request
+    description: "Make HTTP requests to APIs"
+    permissions: [network]
+  - name: db_query
+    description: "Query the SQLite database"
+    permissions: [database]
+
+# ── Providers (AI backends) ───────────────────────────────
+providers:
+  auto_detected:
+    - openclaw     # Local gateway at localhost:3000
+    - ollama       # Local models at localhost:11434
+    - lmstudio     # Local models at localhost:1234
+  cloud:
+    - openrouter   # Multi-model API
+    - anthropic    # Claude
+    - openai       # GPT-4
+    - google       # Gemini
+
+# ── API Endpoint ──────────────────────────────────────────
+api:
+  base_url: "http://localhost:8000"
+  endpoints:
+    - path: /api/task
+      method: POST
+      description: "Submit a task to any studio"
+    - path: /api/studios
+      method: GET
+      description: "List available studios and capabilities"
+    - path: /api/status/{task_id}
+      method: GET
+      description: "Check task status"
+    - path: /api/health
+      method: GET
+      description: "System health check"
+
+# ── Execution Modes ──────────────────────────────────────
+execution:
+  modes:
+    - name: autonomous
+      description: "AI debates, creates files, runs commands, pushes to git"
+    - name: supervised
+      description: "AI generates plan, human approves before execution"
+    - name: advisory
+      description: "AI suggests actions, human executes manually"
+  default: autonomous

@@ -236,6 +236,97 @@ class BaseStudio(ABC):
         )
         return content
 
+    # ── Action Execution (v5.0: REAL work, not just advice) ───
+
+    @property
+    def action_executor(self):
+        """Access the action executor for autonomous file/command execution."""
+        if not hasattr(self, "_action_executor") or self._action_executor is None:
+            from kernel.action_executor import get_action_executor
+            self._action_executor = get_action_executor()
+        return self._action_executor
+
+    def execute_actions(
+        self,
+        ai_output: str,
+        project_dir: str = "",
+        auto_git: bool = False,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Parse AI output and EXECUTE real actions.
+
+        This turns AI text with code blocks into:
+        - Real files on disk
+        - Real shell commands executed
+        - Real git commits + pushes
+        """
+        result = self.action_executor.auto_execute(
+            ai_output=ai_output,
+            project_dir=project_dir or str(self.cfg.root),
+            auto_git=auto_git,
+            dry_run=dry_run,
+        )
+        return {
+            "success": result.success,
+            "files_created": result.files_created,
+            "files_modified": result.files_modified,
+            "commands_run": result.commands_run,
+            "git_operations": result.git_operations,
+            "errors": result.errors,
+            "duration_ms": result.duration_ms,
+        }
+
+    def create_file(self, path: str, content: str, project_dir: str = "") -> Path:
+        """Create a real file on disk."""
+        base = Path(project_dir) if project_dir else self.cfg.root
+        filepath = base / path
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(content, encoding="utf-8")
+        logger.info("[%s] Created file: %s", self.name, filepath)
+        return filepath
+
+    def git_commit_push(
+        self,
+        message: str,
+        project_dir: str = "",
+        push: bool = True,
+    ) -> dict[str, Any]:
+        """Git add, commit, and optionally push."""
+        import subprocess
+        cwd = project_dir or str(self.cfg.root)
+        results = {"operations": [], "errors": []}
+
+        # Add
+        proc = subprocess.run(
+            "git add -A", shell=True, capture_output=True, text=True,
+            cwd=cwd, timeout=30,
+        )
+        results["operations"].append("git add -A")
+
+        # Commit
+        proc = subprocess.run(
+            ["git", "commit", "-m", message],
+            capture_output=True, text=True, cwd=cwd, timeout=30,
+        )
+        if proc.returncode == 0:
+            results["operations"].append(f"git commit: {message}")
+        elif "nothing to commit" not in (proc.stdout + proc.stderr):
+            results["errors"].append(proc.stderr[:200])
+
+        # Push
+        if push:
+            proc = subprocess.run(
+                "git push origin main", shell=True,
+                capture_output=True, text=True, cwd=cwd, timeout=60,
+            )
+            if proc.returncode == 0:
+                results["operations"].append("git push origin main")
+            else:
+                results["errors"].append(proc.stderr[:200])
+
+        return results
+
     # ── Tool Shortcuts ────────────────────────────────────────
 
     def web_search(self, query: str) -> str:
