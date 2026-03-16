@@ -1052,7 +1052,175 @@ def auto_learn() -> None:
     console.print(table)
 
 
+# ── Audit Trail ──────────────────────────────────────────────
+
+@main.group()
+def audit():
+    """📋 Audit trail — AI call logging and cost tracking"""
+    pass
+
+
+@audit.command("summary")
+@click.option("--days", default=1, help="Period in days")
+def audit_summary(days: int):
+    """Show AI usage summary."""
+    from kernel.audit_trail import get_audit
+    a = get_audit()
+    s = a.get_summary(days)
+
+    console.print(Panel.fit(
+        f"📋 Calls: {s['total_calls']}  |  "
+        f"🎯 Tokens: {s['total_tokens']:,}  |  "
+        f"💰 Cost: ${s['total_cost_usd']:.4f}\n"
+        f"⏱️  Avg Latency: {s['avg_latency_ms']:.0f}ms  |  "
+        f"✅ Success: {s['success_rate']}%  |  "
+        f"❌ Failures: {s['failures']}",
+        title=f"Audit Summary ({days}d)",
+    ))
+
+
+@audit.command("costs")
+@click.option("--days", default=1, help="Period in days")
+@click.option("--by", type=click.Choice(["studio", "model"]), default="studio")
+def audit_costs(days: int, by: str):
+    """Show cost breakdown."""
+    from kernel.audit_trail import get_audit
+    a = get_audit()
+
+    table = Table(title=f"Cost Breakdown by {by} ({days}d)")
+    table.add_column(by.capitalize(), style="bold")
+    table.add_column("Calls", justify="right")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost (USD)", justify="right", style="green")
+
+    rows = a.get_costs_by_studio(days) if by == "studio" else a.get_costs_by_model(days)
+    for r in rows:
+        key = r.get("studio", r.get("model", ""))
+        table.add_row(key, str(r["calls"]), f"{r['tokens']:,}", f"${r['cost_usd']:.4f}")
+    console.print(table)
+
+
+@audit.command("recent")
+@click.option("--limit", default=10, help="Number of entries")
+def audit_recent(limit: int):
+    """Show recent AI calls."""
+    from kernel.audit_trail import get_audit
+    a = get_audit()
+    entries = a.get_recent(limit)
+
+    table = Table(title=f"Recent AI Calls (last {limit})")
+    table.add_column("Studio", style="cyan")
+    table.add_column("Model")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost", justify="right", style="green")
+    table.add_column("Latency", justify="right")
+    table.add_column("OK", justify="center")
+
+    for e in entries:
+        tokens = (e.get("tokens_in", 0) or 0) + (e.get("tokens_out", 0) or 0)
+        ok = "✅" if e.get("success") else "❌"
+        table.add_row(
+            e.get("studio", ""), e.get("model", ""),
+            f"{tokens:,}", f"${e.get('estimated_cost', 0):.4f}",
+            f"{e.get('latency_ms', 0):.0f}ms", ok,
+        )
+    console.print(table)
+
+
+@audit.command("export")
+@click.option("--days", default=7, help="Period in days")
+@click.option("--format", "fmt", type=click.Choice(["json", "csv"]), default="json")
+@click.option("--output", "-o", default="", help="Output file path")
+def audit_export(days: int, fmt: str, output: str):
+    """Export audit log to JSON or CSV."""
+    from kernel.audit_trail import get_audit
+    a = get_audit()
+
+    data = a.export_json(days) if fmt == "json" else a.export_csv(days)
+
+    if output:
+        with open(output, "w") as f:
+            f.write(data)
+        console.print(f"✅ Exported to {output}")
+    else:
+        console.print(data)
+
+
+# ── Guardrails ───────────────────────────────────────────────
+
+@main.group()
+def guardrail():
+    """🛡️ Guardrails — Budget limits, rate limits, content filters"""
+    pass
+
+
+@guardrail.command("status")
+def guardrail_status():
+    """Show guardrail status and usage."""
+    from kernel.guardrails import get_guardrails
+    g = get_guardrails()
+    status = g.get_status()
+
+    console.print(Panel.fit(
+        f"🔍 Scopes tracked: {status['scopes_tracked']}\n"
+        f"📊 Budgets configured: {status['budgets_configured']}",
+        title="🛡️ Guardrails Status",
+    ))
+
+    if status["usage"]:
+        table = Table(title="Usage by Scope")
+        table.add_column("Scope", style="bold")
+        table.add_column("Tokens", justify="right")
+        table.add_column("Limit", justify="right")
+        table.add_column("Used %", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+        table.add_column("Requests", justify="right")
+
+        for scope, u in status["usage"].items():
+            pct = u["tokens_pct"]
+            pct_style = "red" if pct > 80 else "yellow" if pct > 50 else "green"
+            table.add_row(
+                scope, f"{u['tokens_used']:,}", f"{u['tokens_limit']:,}",
+                f"[{pct_style}]{pct}%[/]", f"${u['cost_usd']:.4f}",
+                str(u["requests"]),
+            )
+        console.print(table)
+
+
+@guardrail.command("set-budget")
+@click.argument("scope")
+@click.option("--tokens", type=int, help="Max tokens per day")
+@click.option("--cost", type=float, help="Max cost USD per day")
+@click.option("--rpm", type=int, help="Max requests per minute")
+def guardrail_set_budget(scope: str, tokens: int, cost: float, rpm: int):
+    """Set budget limits for a scope (studio name or 'global')."""
+    from kernel.guardrails import get_guardrails
+    g = get_guardrails()
+    kwargs = {}
+    if tokens:
+        kwargs["max_tokens_per_day"] = tokens
+    if cost:
+        kwargs["max_cost_per_day"] = cost
+    if rpm:
+        kwargs["max_requests_per_minute"] = rpm
+    g.set_budget(scope, **kwargs)
+    console.print(f"✅ Budget updated for '{scope}': {kwargs}")
+
+
+@guardrail.command("check")
+@click.argument("text")
+def guardrail_check(text: str):
+    """Check text for PII or prompt injection."""
+    from kernel.guardrails import get_guardrails
+    g = get_guardrails()
+    result = g.check_content(text)
+    if result.allowed:
+        console.print("✅ Content is clean")
+    else:
+        console.print(f"❌ Blocked: {result.reason}")
+    for w in result.warnings:
+        console.print(f"  {w}")
+
+
 if __name__ == "__main__":
     main()
-
-

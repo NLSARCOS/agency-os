@@ -125,12 +125,31 @@ class BaseStudio(ABC):
             return skill_path.read_text(encoding="utf-8")
         return ""
 
-    # ── AI Calls (v3.0: OpenClaw → model_router fallback) ─────
+    # ── AI Calls (v3.5: Guardrails → OpenClaw → Fallback → Audit) ─
 
     def ai_call(self, prompt: str, system: str = "", task_id: int | None = None) -> str:
-        """Make an AI call through OpenClaw or model_router fallback."""
+        """Make an AI call with guardrails, audit, and fallback."""
+        import time as _time
+        from kernel.guardrails import get_guardrails
+        from kernel.audit_trail import get_audit
+
+        guardrails = get_guardrails()
+        audit = get_audit()
+
         if not system:
             system = self.get_agent_prompt()
+
+        # Pre-call guardrail check
+        check = guardrails.check_pre_call(
+            studio=self.name,
+            agent_id=self.agent_ref or self.name,
+            prompt=prompt,
+        )
+        if not check.allowed:
+            logger.warning("Guardrail blocked: %s", check.reason)
+            return f"[BLOCKED] {check.reason}"
+        for w in check.warnings:
+            logger.warning(w)
 
         # Inject memory context
         memory_context = self.memory.get_context_for_agent(
@@ -141,6 +160,13 @@ class BaseStudio(ABC):
         )
         if memory_context:
             prompt = f"{prompt}\n\n## Context\n{memory_context}"
+
+        start = _time.monotonic()
+        model_used = ""
+        tokens_in = 0
+        tokens_out = 0
+        success = True
+        error_msg = ""
 
         # Try OpenClaw first
         try:
@@ -153,15 +179,31 @@ class BaseStudio(ABC):
                     agent_id=self.agent_ref or self.name,
                 )
                 content = response.get("content", "")
+                model_used = response.get("model", "openclaw")
+                tokens_in = response.get("tokens_in", 0)
+                tokens_out = response.get("tokens_out", 0)
                 if content:
-                    # Store in memory
                     self.memory.store(
                         self.agent_ref or self.name,
                         "assistant", content[:500],
                     )
+                    latency = (_time.monotonic() - start) * 1000
+                    guardrails.record_usage(
+                        self.name, self.agent_ref or self.name,
+                        model_used, tokens_in, tokens_out, latency,
+                    )
+                    audit.log(
+                        studio=self.name, agent_id=self.agent_ref or self.name,
+                        model=model_used, provider="openclaw",
+                        tokens_in=tokens_in, tokens_out=tokens_out,
+                        estimated_cost=guardrails._estimate_cost(model_used, tokens_in, tokens_out),
+                        latency_ms=latency, success=True,
+                        prompt_preview=prompt[:100],
+                    )
                     return content
         except Exception as e:
             logger.debug("OpenClaw call failed, falling back: %s", e)
+            error_msg = str(e)
 
         # Fallback to model_router
         response = self.model_router.call_model_sync(
@@ -171,11 +213,26 @@ class BaseStudio(ABC):
             task_id=task_id,
         )
         content = response.content
+        model_used = getattr(response, "model", "model_router")
+        tokens_in = getattr(response, "tokens_in", 0)
+        tokens_out = getattr(response, "tokens_out", 0)
+        latency = (_time.monotonic() - start) * 1000
 
-        # Store in memory
         self.memory.store(
             self.agent_ref or self.name,
             "assistant", content[:500],
+        )
+        guardrails.record_usage(
+            self.name, self.agent_ref or self.name,
+            model_used, tokens_in, tokens_out, latency,
+        )
+        audit.log(
+            studio=self.name, agent_id=self.agent_ref or self.name,
+            model=model_used, provider="model_router",
+            tokens_in=tokens_in, tokens_out=tokens_out,
+            estimated_cost=guardrails._estimate_cost(model_used, tokens_in, tokens_out),
+            latency_ms=latency, success=bool(content),
+            error=error_msg, prompt_preview=prompt[:100],
         )
         return content
 

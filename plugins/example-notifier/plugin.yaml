@@ -1,0 +1,10 @@
+name: example-notifier
+version: "1.0.0"
+description: Example plugin — sends notifications when pipelines complete
+author: NLSARCOS
+type: tool
+entrypoint: main.py
+enabled: true
+config:
+  webhook_url: ""
+  notify_on: ["success", "failure"]
