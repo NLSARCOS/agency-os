@@ -441,7 +441,7 @@ SKILL_SOURCE="$PROJECT_ROOT/install/openclaw/AGENCY_OS_SKILL.md"
 SOUL_PATCH="$PROJECT_ROOT/install/openclaw/SOUL_PATCH.md"
 
 if [ -d "$OPENCLAW_WORKSPACE" ]; then
-    # 1. Copy Agency OS Skill
+    # 1. Copy Agency OS Skill (detailed reference)
     mkdir -p "$OPENCLAW_SKILLS"
     if [ -f "$SKILL_SOURCE" ]; then
         cp "$SKILL_SOURCE" "$OPENCLAW_SKILLS/AGENCY_OS_SKILL.md"
@@ -450,31 +450,61 @@ if [ -d "$OPENCLAW_WORKSPACE" ]; then
         warn "AGENCY_OS_SKILL.md not found in install/openclaw/"
     fi
 
-    # 2. Patch SOUL.md with Agency OS section (if not already patched)
+    # 2. Embed Agency OS directly into SOUL.md (idempotent)
     if [ -f "$SOUL_FILE" ]; then
-        if ! grep -q "Modo Agencia" "$SOUL_FILE" 2>/dev/null; then
-            # Add Agency OS to Modo Directo
-            if grep -q "Modo Directo" "$SOUL_FILE" 2>/dev/null; then
-                sed -i '/Modo Directo/,/^###/{
-                    /^- \*\*Archivos\*\*/i\- **Agency OS**: `shell` → `cd '"$PROJECT_ROOT"' \&\& source .venv/bin/activate \&\& agency <cmd>`
-                }' "$SOUL_FILE"
-            fi
-
-            # Add Modo Agencia section after Modo Directo
-            AGENCY_SECTION="\n### 🏢 Modo Agencia (Agency OS)\nEres también una **agencia autónoma de desarrollo y marketing** que opera 24/7.\nCuando Nelson hable de negocio, clientes, proyectos, oportunidades, deployment o pipeline:\n1. Lee \`AGENCY_OS_SKILL.md\` si no la has leído ya\n2. Ejecuta los comandos del CLI de Agency OS\n3. Puedes delegar trabajo a sub-agentes en paralelo (dev, marketing, sales)\n4. Reporta resultados por Telegram\n5. Escríbele proactivamente cuando tengas resultados o necesites autorización\n"
-            sed -i '/Modo Equipo/i\'"$AGENCY_SECTION" "$SOUL_FILE" 2>/dev/null || true
-
-            # Add to Skills table
-            if grep -q "GOOGLE_API_SKILL" "$SOUL_FILE" 2>/dev/null; then
-                sed -i '/GOOGLE_API_SKILL/i\| `AGENCY_OS_SKILL.md` | Negocio, clientes, pipeline, deploy, proyectos, agencia |' "$SOUL_FILE"
-            fi
-
-            ok "Patched SOUL.md with Agency OS integration"
+        if grep -q "Agency OS" "$SOUL_FILE" 2>/dev/null; then
+            info "SOUL.md already has Agency OS integration — skipping"
         else
-            info "SOUL.md already has Agency OS integration"
+            # Append Agency OS block to existing SOUL.md (works with any structure)
+            cat >> "$SOUL_FILE" <<'AGENCY_BLOCK'
+
+## ── AGENCY OS (Auto-injected by setup) ──────────────────
+
+### Herramientas de Agencia
+- **Agency OS**: `shell` → `cd AGENCY_ROOT && source .venv/bin/activate && agency <cmd>`
+  - `agency status` → Dashboard completo
+  - `agency auto discover` → Buscar oportunidades/leads
+  - `agency auto evolve` → Auto-mejorar código
+  - `agency studio run <studio>` → Ejecutar departamento (dev, marketing, sales, leadops, abm, analytics, creative)
+  - `agency report` → Generar reporte
+  - `agency health` → Diagnóstico del sistema
+  - Studios en paralelo: `agency studio run dev & agency studio run marketing & wait && agency report`
+
+### 🏢 Reglas de Operación
+- Agency OS es tu **cuerpo operativo**. Tú eres la **voz e inteligencia**.
+- Cuando el usuario pida algo de negocio → ejecuta los comandos de Agency OS directamente.
+- **Trabaja en silencio. Solo escribe cuando hay resultados o necesitas autorización.**
+- ✅ Escribe cuando: oportunidades encontradas, tareas completadas, necesita autorización
+- ❌ NUNCA para: "estoy activa", "heartbeat OK", confirmaciones rutinarias
+
+### Ejecución Paralela
+Para tareas complejas, delega a sub-agentes y fusiona resultados.
+Lee `AGENCY_OS_SKILL.md` para referencia avanzada de comandos y protocolos.
+AGENCY_BLOCK
+            # Replace placeholder with actual project root
+            sed -i "s|AGENCY_ROOT|$PROJECT_ROOT|g" "$SOUL_FILE"
+            ok "Embedded Agency OS into SOUL.md (appended)"
         fi
     else
-        warn "SOUL.md not found — create it in OpenClaw workspace"
+        # No SOUL.md exists — create a minimal one with Agency OS
+        cat > "$SOUL_FILE" <<NEWSOUL
+# SOUL.md — AI Agent + Agency OS
+
+Eres un agente de IA con una agencia autónoma de desarrollo y marketing integrada.
+
+## Herramientas Rápidas
+- **Agency OS**: \`cd $PROJECT_ROOT && source .venv/bin/activate && agency <cmd>\`
+  - \`agency status\` → Dashboard completo
+  - \`agency auto discover\` → Buscar oportunidades/leads
+  - \`agency studio run <studio>\` → Ejecutar departamento
+  - \`agency report\` → Generar reporte
+  - \`agency health\` → Diagnóstico del sistema
+
+## Reglas
+- Trabaja en silencio. Solo escribe cuando hay resultados o necesitas autorización.
+- Lee \`AGENCY_OS_SKILL.md\` para referencia avanzada.
+NEWSOUL
+        ok "Created new SOUL.md with Agency OS embedded"
     fi
 else
     info "OpenClaw workspace not found — skipping integration"
