@@ -570,12 +570,32 @@ def events_cmd(event_type: str | None, level: str | None, limit: int) -> None:
     console.print(table)
 
 
-# ── Cycle / Daemon ────────────────────────────────────────────
+# ── Cycle / Daemon / Heartbeat ──────────────────────────────
 
 @main.command()
 @click.option("--once", is_flag=True, help="Run a single cycle then exit")
-def start(once: bool) -> None:
-    """Start the Agency OS scheduler daemon."""
+@click.option("--daemon", is_flag=True, help="Run the 24/7 Agency Heartbeat")
+def start(once: bool, daemon: bool) -> None:
+    """Start the Agency OS scheduler or permanent heartbeat."""
+    if daemon:
+        import asyncio
+        from kernel.heartbeat import get_heartbeat
+        
+        console.print(Panel(
+            "[bold green]🫀 Agency OS v5.0 Heartbeat Starting[/bold green]\n\n"
+            "  The agency is now alive and running 24/7.\n"
+            "  Press Ctrl+C to stop",
+            border_style="green",
+        ))
+        
+        hb = get_heartbeat()
+        try:
+            asyncio.run(hb.run())
+        except KeyboardInterrupt:
+            hb.stop()
+            console.print("\n[yellow]Heartbeat stopped by user.[/yellow]")
+        return
+
     from kernel.scheduler import AgencyScheduler
 
     sched = AgencyScheduler()
