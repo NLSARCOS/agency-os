@@ -694,6 +694,63 @@ def health() -> None:
 # ── Init ──────────────────────────────────────────────────────
 
 @main.command()
+@click.argument("objective", nargs=-1, required=True)
+def orchestrate(objective: tuple[str, ...]) -> None:
+    """🎯 Orchestrate a full objective across multiple studios.
+
+    Example: agency orchestrate "Create a landing page and sell it"
+    """
+    import asyncio
+    from kernel.mission_planner import MissionPlanner
+
+    full_objective = " ".join(objective)
+    console.print(
+        Panel(
+            f"[bold cyan]🎯 Orchestrating:[/] {full_objective}",
+            title="Mission Planner",
+            border_style="cyan",
+        )
+    )
+    console.print("[dim]Decomposing into sub-missions...[/]\n")
+
+    planner = MissionPlanner()
+    result = asyncio.run(planner.plan_and_execute(full_objective))
+
+    # Show plan
+    table = Table(title="📋 Execution Plan", show_lines=True)
+    table.add_column("#", style="bold", width=4)
+    table.add_column("Studio", style="cyan", width=12)
+    table.add_column("Mission", width=30)
+    table.add_column("Depends On", style="yellow", width=14)
+    table.add_column("Priority", style="green", width=8)
+
+    for i, m in enumerate(result["plan"], 1):
+        deps = ", ".join(m["depends_on"]) if m["depends_on"] else "—"
+        table.add_row(
+            str(m.get("mission_id", i)),
+            m["studio"].upper(),
+            m["name"],
+            deps,
+            f"P{m['priority']}",
+        )
+
+    console.print(table)
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]✅ {result['sub_missions']} sub-missions queued[/]\n"
+            f"  Studios: [cyan]{', '.join(s.upper() for s in result['studios'])}[/]\n"
+            f"  Waves: [yellow]{result['waves']}[/] (parallel where possible)\n"
+            f"  IDs: {result['mission_ids']}\n\n"
+            f"[dim]The heartbeat will execute these in parallel every 60s.\n"
+            f"Monitor progress: [bold]agency dashboard[/][/]",
+            title="Queued",
+            border_style="green",
+        )
+    )
+
+
+@main.command()
 @click.option("--port", default=3000, help="Dashboard port (default: 3000)")
 @click.option("--host", default="0.0.0.0", help="Dashboard host")
 def dashboard(port: int, host: str) -> None:
