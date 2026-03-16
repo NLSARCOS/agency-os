@@ -165,6 +165,22 @@ print(', '.join(models[:8]))
     # Check if gateway is actually running
     if curl -s --max-time 2 "http://localhost:$OPENCLAW_PORT/health" &>/dev/null; then
         ok "Gateway is RUNNING on port $OPENCLAW_PORT"
+        
+        # Test if gateway can actually process chat models (avoids the silent 404 issue)
+        TEST_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$OPENCLAW_PORT/v1/chat/completions" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $OPENCLAW_API_KEY" \
+          -d '{"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}' --max-time 5)
+        
+        if [ "$TEST_HTTP_CODE" = "200" ]; then
+            ok "Gateway AI Models are RESPONDING properly"
+        elif [ "$TEST_HTTP_CODE" = "404" ]; then
+            warn "Gateway returned HTTP 404. Your primary model in openclaw.json is likely offline or invalid."
+            info "Fix: Edit ~/.openclaw/openclaw.json -> agents.defaults.model.primary"
+        else
+            warn "Gateway AI Models failed test (HTTP $TEST_HTTP_CODE). Check your provider keys in openclaw.json."
+        fi
+        
     else
         warn "Gateway is not responding (start with: openclaw)"
     fi
