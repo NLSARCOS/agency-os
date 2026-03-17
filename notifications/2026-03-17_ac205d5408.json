@@ -1,0 +1,14 @@
+{
+  "id": "ac205d5408",
+  "title": "\u2705 Misi\u00f3n #53 Completada",
+  "message": "**[DEV]** [DEV] Pipeline Backend API\n\u23f1 439350ms | Modelo: N/A",
+  "priority": "normal",
+  "source": "mission_engine",
+  "category": "task",
+  "data": {
+    "mission_id": 53,
+    "studio": "dev"
+  },
+  "read": false,
+  "created_at": "2026-03-17T01:20:19.708143+00:00"
+}

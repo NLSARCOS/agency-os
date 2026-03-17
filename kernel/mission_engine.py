@@ -687,9 +687,12 @@ class MissionEngine:
             mission_list = "\n".join(
                 f"  • {m['studio'].upper()}: {m['name']}" for m in promoted
             )
+            _es = self.cfg.language == "es"
             notifier.notify(
-                title="🚀 Studios Working",
-                message=f"Starting parallel execution:\n{mission_list}",
+                title="🚀 Studios Trabajando" if _es else "🚀 Studios Working",
+                message=(
+                    f"{'Iniciando ejecución paralela' if _es else 'Starting parallel execution'}:\n{mission_list}"
+                ),
                 priority=NotificationPriority.LOW,
                 source="mission_engine",
                 category="task",
@@ -798,11 +801,12 @@ class MissionEngine:
             failed = total - succeeded
 
             # Build markdown report
+            _es = self.cfg.language == "es"
             lines = [
-                f"# 📋 Objective Complete: {objective}",
+                f"# 📋 {'Objetivo Completado' if _es else 'Objective Complete'}: {objective}",
                 f"",
-                f"**Result:** {succeeded}/{total} missions succeeded"
-                + (f" | {failed} failed" if failed else ""),
+                f"**{'Resultado' if _es else 'Result'}:** {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}"
+                + (f" | {failed} {'fallaron' if _es else 'failed'}" if failed else ""),
                 f"",
                 f"---",
                 f"",

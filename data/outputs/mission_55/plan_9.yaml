@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    environment:
+      - GOTENBERG_URL=http://gotenberg:3000
+      - REDIS_URL=redis://redis:6379
+  
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    command: gotenberg --api-port=3000
+  
+  redis:
+    image: redis:7-alpine
