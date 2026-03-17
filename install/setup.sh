@@ -420,6 +420,10 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=
 
+# ── Agency API Server ────────────────────────────────────
+AGENCY_API_PORT=8080
+AGENCY_API_URL=http://localhost:8080
+
 # ── Settings ────────────────────────────────────────────
 AGENCY_OS_ROOT=${PROJECT_ROOT}
 AGENCY_OS_LOG_LEVEL=INFO
@@ -547,6 +551,7 @@ OPENCLAW_SKILLS="$OPENCLAW_WORKSPACE/skills"
 SOUL_FILE="$OPENCLAW_WORKSPACE/SOUL.md"
 SKILL_SOURCE="$PROJECT_ROOT/install/openclaw/AGENCY_OS_SKILL.md"
 SOUL_PATCH="$PROJECT_ROOT/install/openclaw/SOUL_PATCH.md"
+AGENCY_API_PORT="${AGENCY_API_PORT:-8080}"
 
 if [ -d "$OPENCLAW_WORKSPACE" ]; then
     # 1. Copy Agency OS Skill (detailed reference)
@@ -560,21 +565,47 @@ if [ -d "$OPENCLAW_WORKSPACE" ]; then
 
     # 2. Embed Agency OS directly into SOUL.md (idempotent)
     if [ -f "$SOUL_FILE" ]; then
+        # Remove old Agency OS block if exists (update instead of skip)
         if grep -q "Agency OS" "$SOUL_FILE" 2>/dev/null; then
-            info "SOUL.md already has Agency OS integration — skipping"
-        else
-            # Append Agency OS block to existing SOUL.md (works with any structure)
-            cat >> "$SOUL_FILE" <<'AGENCY_BLOCK'
+            info "Updating existing Agency OS integration in SOUL.md"
+            # Remove old block between markers
+            sed -i '/## ── AGENCY OS/,/Lee.*AGENCY_OS_SKILL/d' "$SOUL_FILE"
+        fi
+
+        # Append new Agency OS block with API-based orchestration
+        cat >> "$SOUL_FILE" <<AGENCY_BLOCK
 
 ## ── AGENCY OS (Auto-injected by setup) ──────────────────
 
-### 🎯 Auto-Detección de Objetivos
-Cuando el usuario envíe un mensaje que sea un **objetivo de negocio o proyecto**, ejecuta automáticamente:
-```
-cd AGENCY_ROOT && source .venv/bin/activate && agency orchestrate "<mensaje>"
-```
+### 🎯 Orquestación Autónoma (API-based — NO BLOQUEANTE)
+Cuando el usuario envíe un **objetivo de negocio o proyecto**, usa la API:
 
-**Detecta como objetivo si el mensaje:**
+**MÉTODO PREFERIDO (Asíncrono vía API):**
+\`\`\`
+curl -X POST http://localhost:${AGENCY_API_PORT}/api/orchestrate \\
+  -H 'Content-Type: application/json' \\
+  -d '{"prompt": "<mensaje del usuario>", "priority": 5}'
+\`\`\`
+Esto retorna inmediatamente con los IDs de las misiones. Los resultados
+llegarán AUTOMÁTICAMENTE vía callback a /v1/messages. NO NECESITAS ESPERAR.
+
+**MÉTODO ALTERNATIVO (CLI — solo si API no responde):**
+\`\`\`
+cd $PROJECT_ROOT && source .venv/bin/activate && agency orchestrate "<mensaje>"
+\`\`\`
+
+### 📡 Feedback Automático
+Agency OS te enviará los resultados AUTOMÁTICAMENTE:
+- **Por cada misión**: status, output, archivos generados
+- **Al completar todo**: reporte consolidado con todos los resultados
+- **NO necesitas preguntar qué pasó** — los resultados llegan solos
+
+Si necesitas verificar manualmente:
+\`\`\`
+curl http://localhost:${AGENCY_API_PORT}/api/mission/{id}/status
+\`\`\`
+
+### 🔍 Detecta como objetivo si el mensaje:
 - Pide crear/construir algo (app, página, sistema, producto)
 - Pide vender/comercializar/promocionar algo
 - Pide buscar leads/prospectos/clientes
@@ -587,28 +618,21 @@ cd AGENCY_ROOT && source .venv/bin/activate && agency orchestrate "<mensaje>"
 - Ya incluye un comando específico (/agency, agency status, etc.)
 
 ### Herramientas de Agencia
-- **Agency OS**: `shell` → `cd AGENCY_ROOT && source .venv/bin/activate && agency <cmd>`
-  - `agency orchestrate "<objetivo>"` → **Descompone y ejecuta objetivo completo** (multi-studio, paralelo)
-  - `agency dashboard` → Dashboard web en localhost:3000
-  - `agency status` → Dashboard completo CLI
-  - `agency auto discover` → Buscar oportunidades/leads
-  - `agency auto evolve` → Auto-mejorar código
-  - `agency studio run <studio>` → Ejecutar departamento (dev, marketing, sales, leadops, abm, analytics, creative)
-  - `agency report` → Generar reporte
-  - `agency health` → Diagnóstico del sistema
-  - Studios en paralelo: `agency studio run dev & agency studio run marketing & wait && agency report`
+- **API (preferida)**: \`POST http://localhost:${AGENCY_API_PORT}/api/orchestrate\` → Async
+- **CLI (fallback)**: \`cd $PROJECT_ROOT && source .venv/bin/activate && agency <cmd>\`
+  - \`agency status\` → Dashboard completo CLI
+  - \`agency learn show\` → Ver lo que la agencia ha aprendido
+  - \`agency mission results <id>\` → Ver archivos generados
+  - \`agency mission outputs\` → Listar todos los outputs
 
 ### 🏢 Reglas de Operación
 - Agency OS es tu **cuerpo operativo**. Tú eres la **voz e inteligencia**.
-- Cuando el usuario pida algo de negocio → ejecuta `agency orchestrate` automáticamente.
+- **SIEMPRE usa la API** para enviar tareas (no CLI) — es asíncrona y no bloquea
+- **Los resultados llegan solos** — NO preguntes "¿terminó?", espera el callback
 - **Trabaja en silencio. Solo escribe cuando hay resultados o necesitas autorización.**
-- ✅ Escribe cuando: oportunidades encontradas, tareas completadas, necesita autorización
+- ✅ Escribe cuando: resultados recibidos, oportunidades encontradas, necesita autorización
 - ❌ NUNCA para: "estoy activa", "heartbeat OK", confirmaciones rutinarias
-
-### Ejecución Paralela Multi-Studio
-Cada studio usa su propio modelo AI. Misiones corren en paralelo:
-- DEV (codex-5.3) + SALES (ollama) + ABM (openrouter) al mismo tiempo.
-Lee `AGENCY_OS_SKILL.md` para referencia avanzada de comandos y protocolos.
+Lee \`AGENCY_OS_SKILL.md\` para referencia avanzada de comandos y protocolos.
 AGENCY_BLOCK
             # Replace placeholder with actual project root
             sed -i "s|AGENCY_ROOT|$PROJECT_ROOT|g" "$SOUL_FILE"
@@ -621,27 +645,35 @@ AGENCY_BLOCK
 
 Eres un agente de IA con una agencia autónoma de desarrollo y marketing integrada.
 
-## 🎯 Auto-Detección de Objetivos
-Cuando el usuario envíe un objetivo de negocio o proyecto, ejecuta automáticamente:
+## 🎯 Orquestación Autónoma
+Cuando el usuario envíe un objetivo de negocio o proyecto, usa la API:
 \`\`\`
-cd $PROJECT_ROOT && source .venv/bin/activate && agency orchestrate "<mensaje>"
+curl -X POST http://localhost:${AGENCY_API_PORT}/api/orchestrate \\
+  -H 'Content-Type: application/json' \\
+  -d '{"prompt": "<mensaje>", "priority": 5}'
 \`\`\`
+Retorna inmediatamente. Los resultados llegarán AUTOMÁTICAMENTE vía callback.
 Detecta como objetivo si pide crear, vender, buscar clientes, analizar, o suena como orden de trabajo.
 NO ejecutes si es una pregunta casual o ya incluye un comando.
 
-## Herramientas Rápidas
-- **Agency OS**: \`cd $PROJECT_ROOT && source .venv/bin/activate && agency <cmd>\`
-  - \`agency orchestrate "<objetivo>"\` → **Descompone y ejecuta objetivo completo**
-  - \`agency dashboard\` → Dashboard web en localhost:3000
-  - \`agency status\` → Dashboard completo CLI
-  - \`agency auto discover\` → Buscar oportunidades/leads
-  - \`agency studio run <studio>\` → Ejecutar departamento
-  - \`agency report\` → Generar reporte
-  - \`agency health\` → Diagnóstico del sistema
+## 📡 Feedback Automático
+Agency OS reporta resultados AUTOMÁTICAMENTE:
+- Por cada misión completada/fallida
+- Reporte consolidado al finalizar todo
+- **NO necesitas preguntar** — los resultados llegan solos
+
+## Herramientas
+- **API (preferida)**: \`POST http://localhost:${AGENCY_API_PORT}/api/orchestrate\`
+- **Status**: \`GET http://localhost:${AGENCY_API_PORT}/api/mission/{id}/status\`
+- **CLI (fallback)**: \`cd $PROJECT_ROOT && source .venv/bin/activate && agency <cmd>\`
+  - \`agency status\` → Dashboard CLI
+  - \`agency learn show\` → Learnings de la agencia
+  - \`agency mission results <id>\` → Archivos generados
 
 ## Reglas
-- Trabaja en silencio. Solo escribe cuando hay resultados o necesitas autorización.
-- Studios corren en paralelo, cada uno con su propio modelo AI.
+- SIEMPRE usa la API (no CLI) para enviar tareas — es asíncrona.
+- Los resultados llegan solos — NO preguntes "¿terminó?".
+- Trabaja en silencio. Solo escribe cuando hay resultados.
 - Lee \`AGENCY_OS_SKILL.md\` para referencia avanzada.
 NEWSOUL
         ok "Created new SOUL.md with Agency OS embedded"

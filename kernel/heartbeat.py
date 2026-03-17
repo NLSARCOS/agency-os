@@ -135,6 +135,9 @@ class AgencyHeartbeat:
         signal.signal(signal.SIGTERM, _handle_shutdown)
         signal.signal(signal.SIGINT, _handle_shutdown)
 
+        # ── Auto-start API Server ────────────────────────────
+        self._start_api_server()
+
         logger.info(
             f"Agency OS Heartbeat STARTED (PID {os.getpid()}). "
             f"[Tick: {self.config.tick_interval}s, "
@@ -161,6 +164,38 @@ class AgencyHeartbeat:
         logger.info("Agency OS Heartbeat STOPPED.")
         if self._pid_file.exists():
             self._pid_file.unlink(missing_ok=True)
+
+    def _start_api_server(self) -> None:
+        """Start the API server in a background thread for OpenClaw feedback."""
+        try:
+            from kernel.api_server import create_app
+            import uvicorn
+            import threading
+
+            port = int(os.environ.get("AGENCY_API_PORT", "8080"))
+            app = create_app()
+
+            def _run_server() -> None:
+                uvicorn.run(
+                    app,
+                    host="0.0.0.0",
+                    port=port,
+                    log_level="warning",
+                    access_log=False,
+                )
+
+            thread = threading.Thread(
+                target=_run_server, daemon=True, name="agency-api"
+            )
+            thread.start()
+            logger.info("API server started on port %d (for OpenClaw feedback)", port)
+        except ImportError:
+            logger.warning(
+                "FastAPI/uvicorn not installed — API server disabled. "
+                "Install with: pip install fastapi uvicorn"
+            )
+        except Exception as e:
+            logger.error("Failed to start API server: %s", e)
 
     async def _tick(self) -> None:
         """The actual logic evaluated every minute."""
