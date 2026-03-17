@@ -298,12 +298,13 @@ class MissionEngine:
 
             if success:
                 duration = result.get("duration_ms", 0)
+                _es = self.cfg.language == "es"
                 notifier.notify(
-                    title=f"✅ Mission #{mission_id} Complete",
+                    title=f"✅ Misión #{mission_id} Completada" if _es else f"✅ Mission #{mission_id} Complete",
                     message=(
                         f"**[{studio.upper()}]** {name}\n"
                         f"⏱ {duration:.0f}ms | "
-                        f"Model: {result.get('model', 'N/A')}"
+                        f"{'Modelo' if _es else 'Model'}: {result.get('model', 'N/A')}"
                     ),
                     priority=NotificationPriority.NORMAL,
                     source="mission_engine",
@@ -311,11 +312,12 @@ class MissionEngine:
                     data={"mission_id": mission_id, "studio": studio},
                 )
             else:
+                _es = self.cfg.language == "es"
                 notifier.notify(
-                    title=f"❌ Mission #{mission_id} Failed",
+                    title=f"❌ Misión #{mission_id} Falló" if _es else f"❌ Mission #{mission_id} Failed",
                     message=(
                         f"**[{studio.upper()}]** {name}\n"
-                        f"Error: {result.get('error', 'Unknown')[:200]}"
+                        f"{'Error' if _es else 'Error'}: {result.get('error', 'Desconocido' if _es else 'Unknown')[:200]}"
                     ),
                     priority=NotificationPriority.HIGH,
                     source="mission_engine",
@@ -867,13 +869,14 @@ class MissionEngine:
                 studios_list = ", ".join(
                     m["studio"].upper() for m in missions
                 )
+                _es = self.cfg.language == "es"
                 notifier.notify(
-                    title="📋 Objective Complete!",
+                    title="📋 ¡Objetivo Completado!" if _es else "📋 Objective Complete!",
                     message=(
                         f"**{objective[:100]}**\n\n"
-                        f"✅ {succeeded}/{total} missions succeeded\n"
-                        f"Studios: {studios_list}\n"
-                        f"Report: `{report_file.name}`"
+                        f"✅ {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}\n"
+                        f"{'Estudios' if _es else 'Studios'}: {studios_list}\n"
+                        f"{'Reporte' if _es else 'Report'}: `{report_file.name}`"
                     ),
                     priority=NotificationPriority.NORMAL,
                     source="mission_engine",

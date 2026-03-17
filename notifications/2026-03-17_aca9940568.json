@@ -1,0 +1,14 @@
+{
+  "id": "aca9940568",
+  "title": "\u2705 Mission #52 Complete",
+  "message": "**[DEV]** [DEV] Authentication & RBAC Implementation\n\u23f1 528622ms | Model: N/A",
+  "priority": "normal",
+  "source": "mission_engine",
+  "category": "task",
+  "data": {
+    "mission_id": 52,
+    "studio": "dev"
+  },
+  "read": false,
+  "created_at": "2026-03-17T01:07:59.842770+00:00"
+}

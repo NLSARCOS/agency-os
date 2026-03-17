@@ -543,18 +543,20 @@ class OpenClawBridge:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
-        # Human-readable message
+        # Human-readable message (i18n)
+        _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
         msg_lines = [
-            f"{icon} **Mission #{mission_id} {'Complete' if success else 'Failed'}**",
+            f"{icon} **Misión #{mission_id} {'Completada' if success else 'Falló'}**" if _es
+            else f"{icon} **Mission #{mission_id} {'Complete' if success else 'Failed'}**",
             f"📋 {name}",
             f"🏢 Studio: {studio.upper()}" if studio else "",
         ]
         if success:
-            msg_lines.append(f"⏱️ Duration: {duration_ms:.0f}ms")
+            msg_lines.append(f"⏱️ {'Duración' if _es else 'Duration'}: {duration_ms:.0f}ms")
             if artifacts:
-                msg_lines.append(f"📦 {len(artifacts)} file(s) generated")
+                msg_lines.append(f"📦 {len(artifacts)} {'archivo(s) generado(s)' if _es else 'file(s) generated'}")
             if output_summary:
-                msg_lines.append(f"\n📄 Output:\n{output_summary[:500]}")
+                msg_lines.append(f"\n📄 {'Resultado' if _es else 'Output'}:\n{output_summary[:500]}")
         else:
             msg_lines.append(f"💥 Error: {error[:300]}")
 
@@ -611,13 +613,14 @@ class OpenClawBridge:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
+        _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
         message = (
-            f"{icon} **Objective Complete**\n"
+            f"{icon} **{'Objetivo Completado' if _es else 'Objective Complete'}**\n"
             f"📋 {objective[:100]}\n"
-            f"✅ {succeeded}/{total} missions succeeded\n"
-            + (f"❌ {failed} failed\n" if failed else "")
+            f"✅ {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}\n"
+            + (f"❌ {failed} {'fallaron' if _es else 'failed'}\n" if failed else "")
             + (f"🏢 Studios: {', '.join(s.upper() for s in (studios or []))}\n" if studios else "")
-            + (f"📄 Report: `{report_file}`" if report_file else "")
+            + (f"📄 {'Reporte' if _es else 'Report'}: `{report_file}`" if report_file else "")
         )
 
         # Try OpenClaw first
