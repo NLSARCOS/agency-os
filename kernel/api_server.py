@@ -613,7 +613,7 @@ def create_app() -> Any:
                 query += " AND source = ?"
                 params.append(source)
 
-            query += " ORDER BY created_at DESC LIMIT ?"
+            query += " ORDER BY timestamp DESC LIMIT ?"
             params.append(min(limit, 200))
 
             with state._lock:
@@ -636,7 +636,7 @@ def create_app() -> Any:
                 rows = state._conn.execute(
                     """SELECT level, COUNT(*) as count
                        FROM events
-                       WHERE created_at > datetime('now', '-24 hours')
+                       WHERE timestamp > datetime('now', '-24 hours')
                        GROUP BY level"""
                 ).fetchall()
             summary = {r["level"]: r["count"] for r in rows}
