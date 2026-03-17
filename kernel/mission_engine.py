@@ -246,6 +246,7 @@ class MissionEngine:
         # ── Result Delivery ──────────────────────────────────
         self._save_output(mission_id, name, studio, result)
         self._notify_completion(mission_id, name, studio, result)
+        self._callback_openclaw(mission_id, name, studio, result)
 
         # Log KPIs
         self.state.log_kpi(
@@ -323,6 +324,40 @@ class MissionEngine:
                 )
         except Exception as e:
             logger.error("Failed to notify for mission #%d: %s", mission_id, e)
+
+    def _callback_openclaw(
+        self, mission_id: int, name: str, studio: str, result: dict
+    ) -> None:
+        """Report mission result back to OpenClaw for autonomous feedback."""
+        try:
+            from kernel.openclaw_bridge import get_openclaw
+            oc = get_openclaw()
+
+            # Collect artifact paths from step results
+            artifacts = []
+            for step_data in result.get("steps", {}).values():
+                artifacts.extend(step_data.get("artifacts", []))
+
+            # Build output summary from step contents
+            output_parts = []
+            for step_id, step_data in result.get("steps", {}).items():
+                content = step_data.get("content", "")
+                if content:
+                    output_parts.append(f"[{step_id}] {content[:300]}")
+            output_summary = "\n".join(output_parts)[:2000]
+
+            oc.report_mission_result(
+                mission_id=mission_id,
+                name=name,
+                status=result.get("status", "unknown"),
+                studio=studio,
+                output_summary=output_summary,
+                artifacts=artifacts,
+                duration_ms=result.get("duration_ms", 0),
+                error=result.get("error", ""),
+            )
+        except Exception as e:
+            logger.debug("OpenClaw callback failed for #%d: %s", mission_id, e)
 
     # ── DAG Planning ──────────────────────────────────────────
 
@@ -850,6 +885,21 @@ class MissionEngine:
                 )
             except Exception as e:
                 logger.error("Failed consolidated notification: %s", e)
+
+            # Report objective completion to OpenClaw
+            try:
+                from kernel.openclaw_bridge import get_openclaw
+                oc = get_openclaw()
+                studios_used = list(set(m["studio"] for m in missions))
+                oc.report_objective_complete(
+                    objective=objective,
+                    total=total,
+                    succeeded=succeeded,
+                    report_file=str(report_file),
+                    studios=studios_used,
+                )
+            except Exception as e:
+                logger.debug("OpenClaw objective callback failed: %s", e)
 
         except Exception as e:
             logger.error("Failed to generate consolidated report: %s", e)

@@ -181,6 +181,105 @@ def create_app() -> Any:
             ],
         }
 
+    # ── Orchestrate (Inbound from OpenClaw) ───────────────
+
+    @app.post("/api/orchestrate")
+    async def orchestrate(request: Request):
+        """
+        Accept a task from OpenClaw or any client.
+
+        POST /api/orchestrate
+        {
+            "prompt": "Build a landing page for a dental clinic",
+            "priority": 5
+        }
+
+        Returns immediately with mission IDs.
+        Missions execute asynchronously in the heartbeat.
+        Results are reported back via OpenClaw callback.
+        """
+        body = await request.json()
+        prompt = body.get("prompt", "")
+        priority = body.get("priority", 5)
+
+        if not prompt:
+            raise HTTPException(400, "prompt is required")
+
+        try:
+            from kernel.mission_planner import MissionPlanner
+            from kernel.state_manager import get_state
+
+            planner = MissionPlanner()
+            state = get_state()
+
+            # Plan the missions
+            plan = planner.plan_objective(prompt)
+            missions_created = []
+
+            for m in plan.get("missions", []):
+                mid = state.create_mission(
+                    name=m.get("name", prompt[:80]),
+                    description=m.get("description", prompt),
+                    studio=m.get("studio", "dev"),
+                    priority=priority,
+                    metadata=json.dumps({
+                        "objective": prompt[:200],
+                        "wave": m.get("wave", 1),
+                        "source": "api",
+                    }),
+                )
+                missions_created.append({
+                    "id": mid,
+                    "name": m.get("name", ""),
+                    "studio": m.get("studio", "dev"),
+                    "wave": m.get("wave", 1),
+                })
+
+            logger.info(
+                "API orchestrate: %d missions created for '%s'",
+                len(missions_created), prompt[:60],
+            )
+
+            return {
+                "status": "queued",
+                "objective": prompt[:200],
+                "missions": missions_created,
+                "total": len(missions_created),
+                "message": "Missions queued. Results will be reported via OpenClaw callback.",
+            }
+
+        except Exception as e:
+            logger.error("Orchestrate failed: %s", e)
+            raise HTTPException(500, f"Orchestration failed: {e}")
+
+    @app.get("/api/mission/{mission_id}/status")
+    async def mission_status(mission_id: int):
+        """Check the status of a specific mission."""
+        from kernel.state_manager import get_state
+        state = get_state()
+        m = state.get_mission(mission_id)
+        if not m:
+            raise HTTPException(404, f"Mission #{mission_id} not found")
+
+        # Check for artifacts
+        from pathlib import Path
+        cfg = get_config()
+        artifact_dir = cfg.root / "data" / "outputs" / f"mission_{mission_id}"
+        artifacts = []
+        if artifact_dir.exists():
+            artifacts = [f.name for f in artifact_dir.iterdir()]
+
+        return {
+            "id": m["id"],
+            "name": m["name"],
+            "studio": m["studio"],
+            "status": m["status"],
+            "result": m.get("result", "")[:500],
+            "artifacts": artifacts,
+            "created_at": m.get("created_at", ""),
+            "completed_at": m.get("completed_at", ""),
+        }
+
     # ── Channel Webhook ───────────────────────────────────
 
     @app.post("/api/channel/webhook")

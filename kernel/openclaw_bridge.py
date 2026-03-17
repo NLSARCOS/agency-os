@@ -500,6 +500,147 @@ class OpenClawBridge:
                 return True
         return False
 
+    # ── Mission Result Callback ──────────────────────────────
+
+    def report_mission_result(
+        self,
+        mission_id: int,
+        name: str,
+        status: str,
+        studio: str = "",
+        output_summary: str = "",
+        artifacts: list[str] | None = None,
+        duration_ms: float = 0,
+        error: str = "",
+    ) -> bool:
+        """
+        Report a mission result back to OpenClaw.
+
+        This is the KEY feedback mechanism:
+        - OpenClaw sends task → Agency OS executes → THIS reports back
+        - OpenClaw can then inform the user and trigger follow-up actions
+
+        Sends via:
+        1. OpenClaw /v1/messages (structured, preferred)
+        2. Telegram (fallback)
+        """
+        success = status in ("done", "completed")
+        icon = "✅" if success else "❌"
+
+        # Build structured result
+        result_payload = {
+            "type": "mission_result",
+            "source": "agency-os",
+            "mission_id": mission_id,
+            "name": name,
+            "status": status,
+            "studio": studio,
+            "success": success,
+            "output_summary": output_summary[:2000],
+            "artifacts": artifacts or [],
+            "duration_ms": round(duration_ms, 1),
+            "error": error[:500],
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
+        # Human-readable message
+        msg_lines = [
+            f"{icon} **Mission #{mission_id} {'Complete' if success else 'Failed'}**",
+            f"📋 {name}",
+            f"🏢 Studio: {studio.upper()}" if studio else "",
+        ]
+        if success:
+            msg_lines.append(f"⏱️ Duration: {duration_ms:.0f}ms")
+            if artifacts:
+                msg_lines.append(f"📦 {len(artifacts)} file(s) generated")
+            if output_summary:
+                msg_lines.append(f"\n📄 Output:\n{output_summary[:500]}")
+        else:
+            msg_lines.append(f"💥 Error: {error[:300]}")
+
+        message = "\n".join(line for line in msg_lines if line)
+
+        # Try OpenClaw structured endpoint first
+        try:
+            if self.is_available():
+                headers = {"Content-Type": "application/json"}
+                if self._config.api_key:
+                    headers["Authorization"] = f"Bearer {self._config.api_key}"
+
+                resp = self._client.post(
+                    f"{self._config.gateway_url}/v1/messages",
+                    headers=headers,
+                    json=result_payload,
+                    timeout=10,
+                )
+                if resp.status_code in (200, 201):
+                    logger.info(
+                        "Mission #%d result reported to OpenClaw", mission_id
+                    )
+                    return True
+        except Exception as e:
+            logger.debug("OpenClaw result callback failed: %s", e)
+
+        # Fallback: send via best available channel
+        return self.notify_owner(message)
+
+    def report_objective_complete(
+        self,
+        objective: str,
+        total: int,
+        succeeded: int,
+        report_file: str = "",
+        studios: list[str] | None = None,
+    ) -> bool:
+        """
+        Report that an ENTIRE objective (all waves) is complete.
+        This is the consolidated report callback.
+        """
+        failed = total - succeeded
+        icon = "🎉" if failed == 0 else "⚠️"
+
+        result_payload = {
+            "type": "objective_complete",
+            "source": "agency-os",
+            "objective": objective[:200],
+            "total_missions": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "studios": studios or [],
+            "report_file": report_file,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
+        message = (
+            f"{icon} **Objective Complete**\n"
+            f"📋 {objective[:100]}\n"
+            f"✅ {succeeded}/{total} missions succeeded\n"
+            + (f"❌ {failed} failed\n" if failed else "")
+            + (f"🏢 Studios: {', '.join(s.upper() for s in (studios or []))}\n" if studios else "")
+            + (f"📄 Report: `{report_file}`" if report_file else "")
+        )
+
+        # Try OpenClaw first
+        try:
+            if self.is_available():
+                headers = {"Content-Type": "application/json"}
+                if self._config.api_key:
+                    headers["Authorization"] = f"Bearer {self._config.api_key}"
+
+                resp = self._client.post(
+                    f"{self._config.gateway_url}/v1/messages",
+                    headers=headers,
+                    json=result_payload,
+                    timeout=10,
+                )
+                if resp.status_code in (200, 201):
+                    logger.info("Objective complete reported to OpenClaw")
+                    return True
+        except Exception as e:
+            logger.debug("OpenClaw objective callback failed: %s", e)
+
+        return self.notify_owner(message)
+
     # ── Status ────────────────────────────────────────────────
 
     def get_status(self) -> dict:
