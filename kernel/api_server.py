@@ -280,6 +280,138 @@ def create_app() -> Any:
             "completed_at": m.get("completed_at", ""),
         }
 
+    # ── Mission Feedback (Quality Gate) ───────────────────
+
+    @app.post("/api/mission/{mission_id}/feedback")
+    async def mission_feedback(mission_id: int, request: Request):
+        """
+        OpenClaw reviews a deliverable and sends it back for refinement.
+
+        POST /api/mission/{id}/feedback
+        {
+            "action": "revise",        // "revise" or "approve"
+            "feedback": "Missing CSS responsive design, add mobile breakpoints",
+            "priority": 7              // optional, higher = more urgent
+        }
+
+        If action is "revise":
+        - Creates a REVISION mission in the same studio
+        - Carries original output + feedback as context
+        - Executes automatically in next heartbeat tick
+        - Returns new mission ID for tracking
+
+        If action is "approve":
+        - Marks mission as approved (no further action)
+        """
+        from kernel.state_manager import get_state
+        from kernel.mission_engine import MissionEngine
+
+        state = get_state()
+        body = await request.json()
+
+        action = body.get("action", "revise")
+        feedback = body.get("feedback", "")
+        priority = body.get("priority", 7)
+
+        # Get original mission
+        original = state.get_mission(mission_id)
+        if not original:
+            raise HTTPException(404, f"Mission #{mission_id} not found")
+
+        if action == "approve":
+            # Mark as approved — no further action
+            logger.info("Mission #%d approved by reviewer", mission_id)
+            return {
+                "status": "approved",
+                "mission_id": mission_id,
+                "message": "Mission approved, no revision needed.",
+            }
+
+        if action != "revise":
+            raise HTTPException(400, f"Unknown action: {action}")
+
+        if not feedback:
+            raise HTTPException(400, "feedback is required for revise action")
+
+        # Create revision mission with original output as context
+        original_result = original.get("result", "")[:3000]
+        original_name = original.get("name", "Unknown")
+        studio = original.get("studio", "dev")
+
+        revision_description = (
+            f"REVISION of Mission #{mission_id}: {original_name}\n\n"
+            f"── ORIGINAL OUTPUT ──\n{original_result}\n\n"
+            f"── REVIEWER FEEDBACK ──\n{feedback}\n\n"
+            f"── INSTRUCTIONS ──\n"
+            f"Fix the issues described in the reviewer feedback above. "
+            f"Deliver a COMPLETE, REFINED version. Do NOT start from scratch — "
+            f"improve the original output based on the feedback."
+        )
+
+        # Check for original artifacts to include as context
+        artifact_dir = get_config().root / "data" / "outputs" / f"mission_{mission_id}"
+        artifact_context = ""
+        if artifact_dir.exists():
+            for f in artifact_dir.iterdir():
+                if f.is_file() and f.stat().st_size < 10000:
+                    try:
+                        content = f.read_text()
+                        artifact_context += f"\n── FILE: {f.name} ──\n{content}\n"
+                    except Exception:
+                        pass
+
+        if artifact_context:
+            revision_description += f"\n── ORIGINAL FILES ──{artifact_context}"
+
+        revision_id = state.create_mission(
+            name=f"[REVISION] {original_name}",
+            description=revision_description,
+            studio=studio,
+            priority=priority,
+            metadata=json.dumps({
+                "type": "revision",
+                "original_mission_id": mission_id,
+                "feedback": feedback[:500],
+                "source": "openclaw_review",
+            }),
+        )
+
+        logger.info(
+            "Revision mission #%d created for original #%d (studio: %s)",
+            revision_id, mission_id, studio,
+        )
+
+        return {
+            "status": "revision_queued",
+            "original_mission_id": mission_id,
+            "revision_mission_id": revision_id,
+            "studio": studio,
+            "message": (
+                f"Revision queued as mission #{revision_id}. "
+                f"Will execute automatically. Results reported via callback."
+            ),
+        }
+
+    @app.get("/api/missions/active")
+    async def active_missions():
+        """List all active (queued/running) missions."""
+        from kernel.state_manager import get_state
+        state = get_state()
+        try:
+            with state._lock:
+                rows = state._conn.execute(
+                    """SELECT id, name, studio, status, priority, created_at
+                       FROM missions
+                       WHERE status IN ('queued', 'running')
+                       ORDER BY priority DESC, created_at ASC"""
+                ).fetchall()
+            return {
+                "count": len(rows),
+                "missions": [dict(r) for r in rows],
+            }
+        except Exception as e:
+            raise HTTPException(500, f"Failed to list active missions: {e}")
+
     # ── Channel Webhook ───────────────────────────────────
 
     @app.post("/api/channel/webhook")
