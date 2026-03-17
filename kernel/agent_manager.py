@@ -208,13 +208,30 @@ class AgentManager:
 
     def _build_system_prompt(self, agent: AgentProfile) -> str:
         """Build a comprehensive system prompt including agent definition + skills."""
+        from kernel.config import get_config
+        cfg = get_config()
+
+        # Language directive
+        lang_map = {
+            "es": "IMPORTANTE: DEBES responder SIEMPRE en español. Todo tu output, análisis, reportes, briefings y resultados deben estar en español.",
+            "pt": "IMPORTANTE: Você DEVE responder SEMPRE em português. Toda a sua saída deve ser em português.",
+            "fr": "IMPORTANT: Vous DEVEZ toujours répondre en français.",
+            "de": "WICHTIG: Sie MÜSSEN immer auf Deutsch antworten.",
+        }
+        lang_instruction = lang_map.get(cfg.language, "")
+
         parts = [
             f"You are {agent.name}, part of Agency OS — an autonomous AI agency.",
             f"Goal: {agent.goal}",
-            "",
-            "# Agent Definition",
-            agent.system_prompt[:4000],
         ]
+
+        if lang_instruction:
+            parts.append("")
+            parts.append(f"# Language\n{lang_instruction}")
+
+        parts.append("")
+        parts.append("# Agent Definition")
+        parts.append(agent.system_prompt[:4000])
 
         # Load relevant skills (max 2 to keep context tight)
         loaded_skills = 0
@@ -230,6 +247,8 @@ class AgentManager:
         parts.append("- Use tools when needed for real operations")
         parts.append("- Delegate to specialist agents when task is outside your expertise")
         parts.append("- Report results in structured format")
+        if lang_instruction:
+            parts.append(f"- {lang_instruction}")
 
         return "\n".join(parts)
 
