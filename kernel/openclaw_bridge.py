@@ -580,29 +580,60 @@ class OpenClawBridge:
 
         message = "\n".join(line for line in msg_lines if line)
 
-        # Try OpenClaw structured endpoint first
-        try:
-            if self.is_available():
-                headers = {"Content-Type": "application/json"}
-                if self._config.api_key:
-                    headers["Authorization"] = f"Bearer {self._config.api_key}"
+        # Try OpenClaw structured endpoint with retry + exponential backoff
+        def _try_send_to_openclaw() -> bool:
+            """Send result to OpenClaw with up to 3 retries."""
+            import time as _time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if not self.is_available():
+                        break
+                    headers = {"Content-Type": "application/json"}
+                    if self._config.api_key:
+                        headers["Authorization"] = f"Bearer {self._config.api_key}"
 
-                resp = self._client.post(
-                    f"{self._config.gateway_url}/v1/messages",
-                    headers=headers,
-                    json=result_payload,
-                    timeout=10,
-                )
-                if resp.status_code in (200, 201):
-                    logger.info(
-                        "Mission #%d result reported to OpenClaw", mission_id
+                    resp = self._client.post(
+                        f"{self._config.gateway_url}/v1/messages",
+                        headers=headers,
+                        json=result_payload,
+                        timeout=10,
                     )
-                    return True
-        except Exception as e:
-            logger.debug("OpenClaw result callback failed: %s", e)
+                    if resp.status_code in (200, 201):
+                        logger.info(
+                            "Mission #%d result reported to OpenClaw (attempt %d)",
+                            mission_id,
+                            attempt + 1,
+                        )
+                        return True
+                    logger.debug(
+                        "OpenClaw callback attempt %d/%d failed: %s",
+                        attempt + 1,
+                        max_retries,
+                        resp.status_code,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "OpenClaw callback attempt %d/%d error: %s",
+                        attempt + 1,
+                        max_retries,
+                        e,
+                    )
+                if attempt < max_retries - 1:
+                    _time.sleep(2 ** (attempt + 1))  # 2s, 4s backoff
+            return False
 
-        # Fallback: send via best available channel
-        return self.notify_owner(message)
+        # Try OpenClaw first (non-blocking via thread for retries)
+        import threading
+        def _callback_with_fallback():
+            if not _try_send_to_openclaw():
+                self.notify_owner(message)
+
+        thread = threading.Thread(
+            target=_callback_with_fallback, daemon=True, name="callback-retry"
+        )
+        thread.start()
+        return True
 
     def report_objective_complete(
         self,

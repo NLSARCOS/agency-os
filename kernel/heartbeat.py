@@ -216,6 +216,9 @@ class AgencyHeartbeat:
 
         # 3. Process missions in parallel (one per studio, concurrent execution)
         await self._run_mission_cycle()
+
+        # 4. Execute dynamic scheduled tasks (from API)
+        await self._run_scheduled_tasks()
             
     async def _run_hustle_cycle(self) -> None:
         logger.info("Heartbeat: Triggering Hustle Cycle...")
@@ -275,7 +278,59 @@ class AgencyHeartbeat:
         except Exception as e:
             logger.error(f"Mission cycle failed: {e}")
 
+    async def _run_scheduled_tasks(self) -> None:
+        """Execute dynamic scheduled tasks from the API-created schedule."""
+        try:
+            from kernel.state_manager import get_state
+            state = get_state()
 
+            # Check for enabled tasks due for execution
+            rows = state._conn.execute(
+                """SELECT name, prompt, interval_minutes, studio, priority, last_run_at
+                   FROM scheduled_tasks
+                   WHERE enabled = 1
+                   AND (
+                       last_run_at IS NULL
+                       OR datetime(last_run_at, '+' || interval_minutes || ' minutes') <= datetime('now')
+                   )"""
+            ).fetchall()
+
+            if not rows:
+                return
+
+            for task in rows:
+                task_name = task["name"]
+                prompt = task["prompt"]
+                studio = task["studio"] or None
+                priority = task["priority"] or 5
+
+                logger.info("Scheduled task due: %s", task_name)
+
+                try:
+                    # Plan and queue via mission engine
+                    objective = f"[Scheduled: {task_name}] {prompt}"
+                    result = await self._mission_engine.plan_objective(
+                        objective,
+                        priority=priority,
+                    )
+
+                    # Update last_run_at
+                    state._conn.execute(
+                        "UPDATE scheduled_tasks SET last_run_at = datetime('now') WHERE name = ?",
+                        (task_name,),
+                    )
+                    state._conn.commit()
+
+                    logger.info(
+                        "Scheduled task '%s' queued: %d missions",
+                        task_name,
+                        result.get("mission_count", 0),
+                    )
+                except Exception as e:
+                    logger.error("Scheduled task '%s' failed to queue: %s", task_name, e)
+
+        except Exception as e:
+            logger.debug("Scheduled tasks check skipped: %s", e)
 _heartbeat: AgencyHeartbeat | None = None
 
 

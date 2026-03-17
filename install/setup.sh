@@ -423,6 +423,7 @@ AWS_REGION=
 # ── Agency API Server ────────────────────────────────────
 AGENCY_API_PORT=8080
 AGENCY_API_URL=http://localhost:8080
+AGENCY_API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 
 # ── Settings ────────────────────────────────────────────
 AGENCY_OS_ROOT=${PROJECT_ROOT}

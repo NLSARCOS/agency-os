@@ -149,6 +149,17 @@ CREATE TABLE IF NOT EXISTS delegations (
     completed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    name TEXT PRIMARY KEY,
+    prompt TEXT NOT NULL,
+    interval_minutes INTEGER NOT NULL DEFAULT 60,
+    studio TEXT DEFAULT '',
+    priority INTEGER DEFAULT 5,
+    enabled INTEGER DEFAULT 1,
+    last_run_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_studio ON tasks(studio);
