@@ -1,0 +1,14 @@
+{
+  "id": "aec3d20fc8",
+  "title": "\u2705 Misi\u00f3n #57 Completada",
+  "message": "**[DEV]** [DEV] Subscription & Billing Module\n\u23f1 171090ms | Modelo: N/A",
+  "priority": "normal",
+  "source": "mission_engine",
+  "category": "task",
+  "data": {
+    "mission_id": 57,
+    "studio": "dev"
+  },
+  "read": false,
+  "created_at": "2026-03-17T01:34:20.667867+00:00"
+}

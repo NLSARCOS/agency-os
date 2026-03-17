@@ -409,22 +409,40 @@ class OpenClawBridge:
             logger.debug("Telegram not configured (no token or chat_id)")
             return False
 
+        # Telegram limit: 4096 chars. Split into chunks if needed.
+        MAX_LEN = 4000  # leave margin
+        chunks = []
+        if len(message) <= MAX_LEN:
+            chunks = [message]
+        else:
+            remaining = message
+            while remaining:
+                if len(remaining) <= MAX_LEN:
+                    chunks.append(remaining)
+                    break
+                # Split at nearest newline before MAX_LEN
+                split_at = remaining.rfind("\n", 0, MAX_LEN)
+                if split_at <= 0:
+                    split_at = MAX_LEN
+                chunks.append(remaining[:split_at])
+                remaining = remaining[split_at:].lstrip("\n")
+
         try:
-            resp = self._client.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": target_chat,
-                    "text": message,
-                    "parse_mode": parse_mode,
-                },
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                logger.info("Telegram message sent to %s", target_chat)
-                return True
-            else:
-                logger.warning("Telegram failed: %s", resp.text[:200])
-                return False
+            for i, chunk in enumerate(chunks):
+                resp = self._client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": target_chat,
+                        "text": chunk,
+                        "parse_mode": parse_mode,
+                    },
+                    timeout=10,
+                )
+                if resp.status_code != 200:
+                    logger.warning("Telegram chunk %d failed: %s", i, resp.text[:200])
+                    return False
+            logger.info("Telegram message sent (%d chunk(s)) to %s", len(chunks), target_chat)
+            return True
         except Exception as e:
             logger.error("Telegram send error: %s", e)
             return False
