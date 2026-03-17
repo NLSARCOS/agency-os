@@ -1,0 +1,7 @@
+{
+  "name": "openclaw-agency-os",
+  "version": "1.0.0",
+  "description": "Agency OS plugin for OpenClaw — native tools for autonomous task orchestration",
+  "main": "index.ts",
+  "type": "module"
+}

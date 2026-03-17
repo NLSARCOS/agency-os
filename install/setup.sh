@@ -563,6 +563,37 @@ if [ -d "$OPENCLAW_WORKSPACE" ]; then
         warn "AGENCY_OS_SKILL.md not found in install/openclaw/"
     fi
 
+    # 1b. Deploy Agency OS Plugin (native tools)
+    PLUGIN_SOURCE="$PROJECT_ROOT/install/openclaw/plugin"
+    PLUGIN_DEST="$HOME/.openclaw/extensions/agency-os"
+    if [ -d "$PLUGIN_SOURCE" ]; then
+        mkdir -p "$PLUGIN_DEST"
+        cp "$PLUGIN_SOURCE"/* "$PLUGIN_DEST/"
+        ok "Deployed Agency OS plugin → $PLUGIN_DEST"
+
+        # Register plugin in openclaw.json
+        if [ -f "$OPENCLAW_CONFIG" ]; then
+            python3 -c "
+import json
+with open('$OPENCLAW_CONFIG') as f:
+    cfg = json.load(f)
+plugins = cfg.setdefault('plugins', {})
+allow = plugins.setdefault('allow', [])
+if 'agency-os' not in allow:
+    allow.append('agency-os')
+load = plugins.setdefault('load', {})
+paths = load.setdefault('paths', [])
+if '$PLUGIN_DEST' not in paths:
+    paths.append('$PLUGIN_DEST')
+with open('$OPENCLAW_CONFIG', 'w') as f:
+    json.dump(cfg, f, indent=2)
+print('Plugin registered in openclaw.json')
+" 2>/dev/null && ok "Agency OS plugin registered in openclaw.json" || warn "Could not register plugin in openclaw.json"
+        fi
+    else
+        warn "Plugin source not found at $PLUGIN_SOURCE"
+    fi
+
     # 2. Embed Agency OS directly into SOUL.md (idempotent)
     if [ -f "$SOUL_FILE" ]; then
         # Remove old Agency OS block if exists (update instead of skip)

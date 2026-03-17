@@ -1,0 +1,12 @@
+Given I am viewing an opportunity in "Qualified" stage
+And I am the assigned owner
+When I click "Send Proposal" and upload the PDF
+Then the system moves the opportunity to "Proposal Sent"
+And sets the sent_date to current timestamp
+And sends notification to the client
+And logs the transition in the audit trail
+
+Given I am viewing an opportunity owned by another rep
+When I attempt to change the stage
+Then I receive "Permission Denied" error
+And the stage remains unchanged

@@ -1,0 +1,10 @@
+/* Critical constraints for Puppeteer/Chrome */
+@page {
+  size: A4;
+  margin: 15mm 12mm 20mm 12mm; /* Top Right Bottom Left */
+}
+
+/* Avoid these in PDF context */
+/* - position: fixed (unreliable across pages) */
+/* - Flexbox page breaks (use display: block) */
+/* - External font loading (use base64 or system fonts) */

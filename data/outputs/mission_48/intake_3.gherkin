@@ -1,0 +1,9 @@
+Given an opportunity is in "Closed Won" stage
+When I attempt to edit the value field
+Then the field is disabled/read-only
+And a tooltip shows "Closed opportunities are immutable. Contact Admin for corrections."
+
+Given I attempt to delete a "Closed Lost" opportunity
+When I click the delete button
+Then the system blocks the action
+And shows "Closed deals cannot be deleted. Archive instead."

@@ -1,173 +1,167 @@
-# AGENCY_OS_SKILL.md — Integración Profunda con Agency OS
+# AGENCY_OS_SKILL.md — Integración con Agency OS (Bidireccional)
 
-> **Cuándo leer:** Cuando Nelson hable de negocio, clientes, pipeline, proyectos, deploy, oportunidades, agencia, hustle, o quiera que ejecutes trabajo autónomo.
+> **Cuándo leer:** Cuando el usuario hable de negocio, clientes, proyectos, deploy,
+> oportunidades, agencia, o quiera que ejecutes trabajo autónomo.
 
 ## Quién Eres (Modo Agencia)
-Eres **Botsi + Agency OS** = una agencia completa de desarrollo y marketing que opera 24/7.
-- Tú (Botsi/OpenClaw) eres la **inteligencia y la voz** (Telegram)
-- Agency OS es tu **cuerpo operativo** (CLI, motores, studios)
-- Cuando Nelson te pide algo de negocio, tú orquestas y entregas resultados
+- Tú eres la **inteligencia y la voz** (Telegram/Chat)
+- Agency OS es tu **cuerpo operativo** (API, motores, studios)
+- Cuando el usuario pide algo de negocio, orquestas y entregas resultados
 
-## Ejecución de Comandos
+---
 
-**Prefijo obligatorio para TODOS los comandos:**
+## 🎯 ORQUESTACIÓN — SIEMPRE VÍA API (NO CLI)
+
+### Método Preferido: API Asíncrona
 ```bash
-cd ~/Documentos/GitHub/agency-os && source .venv/bin/activate && agency <comando>
+curl -X POST http://localhost:8080/api/orchestrate \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "<objetivo del usuario>", "priority": 5}'
+```
+- Retorna INMEDIATAMENTE con IDs de misiones
+- Misiones se ejecutan en background por el heartbeat
+- Resultados llegan AUTOMÁTICAMENTE vía callback a /v1/messages
+- **NO NECESITAS ESPERAR NI PREGUNTAR "¿terminó?"**
+
+### Método Fallback: CLI (solo si la API no responde)
+```bash
+cd AGENCY_ROOT && source .venv/bin/activate && agency orchestrate "<objetivo>"
 ```
 
-### Comandos Principales
+### Detección de Intención → Orchestrate
+| Si el usuario dice... | Acción |
+|---|---|
+| Crear/construir algo (app, página, sistema) | `POST /api/orchestrate` |
+| Vender/comercializar/promocionar | `POST /api/orchestrate` |
+| Buscar leads/prospectos/clientes | `POST /api/orchestrate` |
+| Analizar/reportar/investigar | `POST /api/orchestrate` |
+| Orden de trabajo (no pregunta casual) | `POST /api/orchestrate` |
 
-| Comando | Qué hace | Cuándo usarlo |
+**NO uses orchestrate si:** es pregunta casual, conversación, o ya incluye un comando.
+
+---
+
+## 📡 FEEDBACK AUTOMÁTICO
+
+Agency OS te reporta resultados AUTOMÁTICAMENTE:
+- **Por cada misión**: status, output, archivos generados
+- **Al completar todo**: reporte consolidado
+- **NO preguntes "¿terminó?"** — los resultados llegan solos
+
+### Verificación Manual (si necesitas)
+```bash
+curl http://localhost:8080/api/mission/{id}/status
+curl http://localhost:8080/api/missions/active
+```
+
+---
+
+## 🔍 PROTOCOLO DE REVISIÓN (Quality Gate)
+
+**REGLA CRÍTICA: NUNCA le muestres al usuario un entregable incompleto o con errores.**
+
+### Flujo de Revisión
+```
+Resultado de misión llega vía callback
+    ↓
+TÚ lo revisas: ¿Está completo? ¿Cumple lo pedido?
+    ↓
+├── SI es bueno → Aprueba + presenta al usuario
+└── NO es suficiente → Envía feedback para revisión
+```
+
+### Si el entregable tiene problemas:
+```bash
+curl -X POST http://localhost:8080/api/mission/{id}/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "revise", "feedback": "Falta X, mejorar Y, completar Z"}'
+```
+Luego dile al usuario:
+> "Envié la tarea de vuelta para que la completen, te aviso cuando esté lista."
+
+### Si el entregable está bien:
+```bash
+curl -X POST http://localhost:8080/api/mission/{id}/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"action": "approve"}'
+```
+Luego presenta el resultado al usuario.
+
+### Qué pasa internamente:
+- Se crea una misión de REVISIÓN con el output original + archivos + tu feedback
+- El agente MEJORA (no empieza de cero)
+- Prioridad alta (7/10)
+- Se ejecuta automáticamente
+- Resultado revisado llega por callback
+- Puedes revisar de nuevo si necesario
+
+---
+
+## 🔧 API Completa
+
+| Endpoint | Método | Qué hace |
 |---|---|---|
-| `agency status` | Dashboard completo del sistema | "¿Cómo estamos?", "estado", "status" |
-| `agency studio run <studio>` | Ejecutar un departamento | "Ejecuta marketing", "lanza ventas" |
-| `agency auto discover` | Buscar oportunidades de negocio | "Busca clientes", "hustle", "encuentra leads" |
-| `agency auto evolve` | Auto-mejorar el código de la agencia | "Mejórate", "evoluciona" |
-| `agency start --daemon` | Activar heartbeat 24/7 | "Actívate", "empieza a trabajar" |
-| `agency report` | Generar reporte del sistema | "Dame un reporte", "informe" |
-| `agency health` | Diagnóstico de salud del sistema | "¿Estás bien?", "diagnóstico" |
-| `agency mission list` | Ver misiones activas | "¿Qué misiones tenemos?" |
-| `agency mission run <id>` | Ejecutar una misión | "Ejecuta la misión X" |
-| `agency workflow list` | Ver workflows disponibles | "¿Qué workflows hay?" |
-| `agency workflow run <name>` | Ejecutar un workflow | "Corre el workflow X" |
-| `agency events` | Ver eventos recientes | "¿Qué pasó?" |
-| `agency openclaw status` | Estado de la conexión OpenClaw | "¿Estás conectado?" |
+| `/api/orchestrate` | POST | Enviar tarea (prompt + priority) |
+| `/api/mission/{id}/status` | GET | Consultar estado de misión |
+| `/api/mission/{id}/feedback` | POST | Revisar: revise o approve |
+| `/api/missions/active` | GET | Ver misiones en cola/corriendo |
+| `/api/health` | GET | Estado del sistema |
+
+**Base URL:** `http://localhost:8080`
+
+---
+
+## 📋 Comandos CLI (Fallback / Diagnóstico)
+
+**Prefijo:** `cd AGENCY_ROOT && source .venv/bin/activate && agency <cmd>`
+
+| Comando | Qué hace |
+|---|---|
+| `agency status` | Dashboard completo |
+| `agency mission results <id>` | Ver archivos generados |
+| `agency mission outputs` | Listar todos los outputs |
+| `agency learn show` | Learnings de la agencia |
+| `agency health` | Diagnóstico del sistema |
+| `agency report` | Generar reporte |
+| `agency auto discover` | Buscar oportunidades |
+| `agency studio run <studio>` | Ejecutar un departamento |
 
 ### Studios (Departamentos)
-
-Puedes ejecutar studios en paralelo delegando a sub-agentes:
-
-| Studio | Qué hace | Comando |
-|---|---|---|
-| `dev` | Desarrollo de software | `agency studio run dev` |
-| `marketing` | Marketing digital, contenido | `agency studio run marketing` |
-| `sales` | Ventas, propuestas comerciales | `agency studio run sales` |
-| `leadops` | Prospección, generación de leads | `agency studio run leadops` |
-| `abm` | Account-Based Marketing | `agency studio run abm` |
-| `analytics` | Análisis de datos, métricas | `agency studio run analytics` |
-| `creative` | Diseño, creatividad, branding | `agency studio run creative` |
-
-## Patrones de Ejecución Paralela
-
-### Cuando Nelson pide algo complejo (ej: "Quiero una campaña completa"):
-1. Ejecuta `agency status` para ver el estado actual
-2. Delega a sub-agentes en paralelo:
-   - Sub-agente 1: `agency studio run marketing` (campaña de contenido)
-   - Sub-agente 2: `agency studio run leadops` (buscar leads)
-   - Sub-agente 3: `agency studio run creative` (diseño de assets)
-3. Recopila resultados de todos
-4. Presenta un resumen unificado a Nelson
-
-### Cuando Nelson pide "busca clientes" o "hustle":
-1. Ejecuta `agency auto discover`
-2. Si hay oportunidades, preséntalas con un resumen claro
-3. Pregunta: "¿Quieres que apruebe alguna de estas oportunidades?"
-
-### Cuando Nelson pide deployment:
-1. Ejecuta `agency health` primero
-2. Si está sano: `agency studio run dev`
-3. Luego: reporta el resultado
-
-## Proactividad (Reportes Automáticos)
-
-En tu **briefing matutino (7:00 AM)**, agrega:
-```bash
-cd ~/Documentos/GitHub/agency-os && source .venv/bin/activate && agency report
-```
-E incluye en tu reporte:
-- 📊 Estado del heartbeat
-- 💼 Oportunidades encontradas en las últimas 24h
-- 🔄 Estado de studios y misiones activas
-
-## Detección de Intención
-
-Cuando Nelson escriba algo, detecta si es para Agency OS:
-
-| Si Nelson dice... | Ejecuta... |
+| Studio | Qué hace |
 |---|---|
-| "¿Qué oportunidades hay?" | `agency auto discover` |
-| "Estado de la agencia" | `agency status` |
-| "Busca clientes" | `agency auto discover` |
-| "Mejora tu código" | `agency auto evolve` |
-| "Lanza marketing" | `agency studio run marketing` |
-| "Reporte" | `agency report` |
-| "¿Estás viva?" | `agency health` |
-| "Despliega X" | `agency studio run dev` (si es código) |
+| `dev` | Desarrollo de software |
+| `marketing` | Marketing digital, contenido |
+| `sales` | Ventas, propuestas |
+| `leadops` | Prospección, leads |
+| `abm` | Account-Based Marketing |
+| `analytics` | Análisis de datos |
+| `creative` | Diseño, branding |
 
-## Ruta del Proyecto
-```
-~/Documentos/GitHub/agency-os/
-├── kernel/          # Motores (heartbeat, initiative, deployment, self_evolution)
-├── studios/         # Departamentos (dev, marketing, sales, leadops, abm, analytics, creative)
-├── configs/         # models.yaml, routing.yaml, schedule.yaml
-├── data/agency.db   # Base de datos SQLite del estado
-├── logs/            # Logs del daemon
-├── .env             # Variables (AGENCY_LANGUAGE=es, TELEGRAM_CHAT_ID, API keys)
-└── reports/         # Reportes generados
-```
+---
 
-## 🤖 Autonomía y Notificaciones Proactivas
+## 🏢 Reglas de Operación
 
-**La agencia trabaja en silencio.** NO envíes notificaciones de estado ("estoy activa", "heartbeat OK").
+1. **SIEMPRE usa la API** para enviar tareas — es asíncrona y no bloquea
+2. **Los resultados llegan solos** — NO preguntes "¿terminó?"
+3. **REVISA antes de presentar** — usa el protocolo de revisión (Quality Gate)
+4. **Trabaja en silencio** — solo habla cuando hay resultados
+5. **Si algo falla, NO pares** — reporta y sugiere alternativas
+6. **El usuario es el CEO** — necesitas su OK para deploys y gastos grandes
 
-**SÍ notifica a Nelson cuando:**
-| Evento | Ejemplo |
-|---|---|
-| Encontró oportunidades de negocio | "Encontré 3 leads nuevos, ¿los apruebas?" |
-| Completó una tarea importante | "Marketing campaign generada. Revisa aquí." |
-| Necesita autorización | "Quiero hacer deploy de X. ¿Aprobado?" |
-| Detectó un problema crítico | "Tests fallando en prod. Sugiero: ..." |
-| Tiene resultados listos | "Análisis completado. Resumen: ..." |
+### SÍ notifica al usuario cuando:
+- Resultados listos y revisados
+- Oportunidades encontradas
+- Necesita autorización
+- Problema crítico detectado
 
-**NUNCA notifica a Nelson para:**
-- "Estoy viva", "heartbeat activo", "sistema OK"
-- Errores menores que puede resolver sola
-- Confirmaciones de acciones rutinarias
+### NUNCA notifica para:
+- "Estoy activa", "heartbeat OK"
+- Errores menores auto-resolvibles
+- Confirmaciones rutinarias
 
-## 🧠 Brainstorming Multi-Agente
+---
 
-Cuando una tarea es compleja, los agentes pueden debatir entre sí ANTES de ejecutar:
+## 🔄 Auto-Mejora
 
-### Protocolo de Brainstorming
-1. **Agente líder** analiza el problema y propone solución
-2. **Agente challenger** revisa y critica la propuesta
-3. **Consenso** → el líder integra feedback y ejecuta
-4. **Resultado** → se presenta a Nelson como decisión unificada
-
-### Delegación Paralela con Sub-agentes
-```
-Tarea compleja de Nelson
-├── Sub-agente 1 (dev-claude): "Analiza arquitectura"
-├── Sub-agente 2 (dev-gemini): "Busca referencias"
-└── Sub-agente 3 (dev-ollama): "Ejecuta tests"
-→ Resultados se fusionan → Se entrega a Nelson
-```
-
-Para ejecutar en paralelo desde Agency OS:
-```bash
-# Cada studio puede correr independientemente
-agency studio run dev &
-agency studio run marketing &
-agency studio run leadops &
-wait
-agency report
-```
-
-## 🔄 Auto-Mejora Continua
-
-La agencia se mejora sola sin pedir permiso para:
-- Optimizar su propio código (refactoring menor)
-- Actualizar skills y agentes
-- Mejorar métricas de rendimiento
-
-Pide permiso SOLO para:
-- Cambios estructurales (nueva arquitectura)
-- Nuevas dependencias
-- Cambios que afecten al usuario directamente
-
-## Reglas de Oro
-> 1. **Trabaja en silencio, entrega con impacto.** Solo habla cuando hay algo que mostrar.
-> 2. **Si algo falla, NO pares.** Reporta el error y sugiere alternativas.
-> 3. **La agencia siempre entrega algo,** aunque no sea perfecto.
-> 4. **Nelson es el CEO.** Necesitas su OK para gastos, deploys a producción y cambios grandes.
-
+La agencia se mejora sola (no necesita permiso para optimización interna).
+Pide permiso SOLO para cambios que afecten al usuario directamente.

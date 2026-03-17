@@ -1,0 +1,43 @@
+{
+  "proposal": {
+    "id": "PROP-2024-001",
+    "created_at": "2024-01-15",
+    "valid_until": "2024-02-15",
+    "status": "draft"
+  },
+  "client": {
+    "name": "Acme Corporation",
+    "contact": "Jane Doe",
+    "email": "jane@acme.com",
+    "logo": "https://cdn.thelab.lat/clients/acme.png"
+  },
+  "project": {
+    "title": "Sistema de Gestión Integral",
+    "description": "Plataforma SaaS multi-tenant...",
+    "delivery_weeks": 8
+  },
+  "pricing": {
+    "currency": "USD",
+    "items": [
+      {
+        "phase": "Discovery",
+        "description": "Análisis de requerimientos",
+        "hours": 40,
+        "rate": 75,
+        "subtotal": 3000
+      }
+    ],
+    "subtotal": 12000,
+    "tax_rate": 0.16,
+    "tax_amount": 1920,
+    "total": 13920
+  },
+  "company": {
+    "name": "The Lab",
+    "legal_name": "The Lab Digital Solutions S.A.C.",
+    "ruc": "20548796321",
+    "address": "Av. Pardo 123, Lima",
+    "email": "hola@thelab.lat",
+    "website": "thelab.lat"
+  }
+}

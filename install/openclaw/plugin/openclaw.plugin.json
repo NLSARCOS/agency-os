@@ -1,0 +1,20 @@
+{
+  "id": "agency-os",
+  "name": "Agency OS",
+  "description": "Multi-studio AI agency integration. Provides orchestrate, feedback, and status tools for autonomous task execution.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "description": "Agency OS API URL",
+        "default": "http://localhost:8080"
+      },
+      "projectRoot": {
+        "type": "string",
+        "description": "Agency OS project root path"
+      }
+    }
+  }
+}

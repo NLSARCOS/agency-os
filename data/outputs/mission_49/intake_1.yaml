@@ -1,0 +1,13 @@
+Rules:
+  proposal_limit:
+    check: "count(proposals WHERE month=current) < tier.limit"
+    error_msg: "Límite alcanzado. Upgrade para ilimitado."
+    hard_stop: true
+  
+  user_seats:
+    check: "active_users < tier.seats"
+    action_on_invite: "block_with_upgrade_cta"
+  
+  storage:
+    check: "sum(file_sizes) < tier.storage_gb * 1024^3"
+    warning_at: "90%"
