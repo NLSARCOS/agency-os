@@ -160,6 +160,31 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    company TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    pipeline_stage TEXT DEFAULT 'lead',
+    source TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    total_revenue REAL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS financial_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mission_id INTEGER REFERENCES missions(id),
+    client_id INTEGER REFERENCES clients(id),
+    record_type TEXT NOT NULL DEFAULT 'cost',
+    amount REAL NOT NULL DEFAULT 0,
+    currency TEXT DEFAULT 'USD',
+    description TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_studio ON tasks(studio);
@@ -170,6 +195,9 @@ CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
 CREATE INDEX IF NOT EXISTS idx_workflow_state_mission ON workflow_state(mission_id);
 CREATE INDEX IF NOT EXISTS idx_tool_results_agent ON tool_results(agent_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_status ON delegations(status);
+CREATE INDEX IF NOT EXISTS idx_clients_stage ON clients(pipeline_stage);
+CREATE INDEX IF NOT EXISTS idx_financial_mission ON financial_records(mission_id);
+CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_records(client_id);
 """
 
 
@@ -532,6 +560,146 @@ class StateManager:
             ).fetchall()
         # Return in chronological order
         return [dict(r) for r in reversed(rows)]
+
+    # ── Clients (CRM) ────────────────────────────────────────
+
+    def create_client(
+        self,
+        name: str,
+        company: str = "",
+        email: str = "",
+        phone: str = "",
+        source: str = "",
+        notes: str = "",
+        pipeline_stage: str = "lead",
+    ) -> int:
+        now = _now()
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO clients
+                   (name, company, email, phone, pipeline_stage, source, notes, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, company, email, phone, pipeline_stage, source, notes, now, now),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def update_client(self, client_id: int, **fields: Any) -> None:
+        allowed = {"name", "company", "email", "phone", "pipeline_stage", "source", "notes", "total_revenue"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        updates["updated_at"] = _now()
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE clients SET {set_clause} WHERE id = ?",
+                [*updates.values(), client_id],
+            )
+            self._conn.commit()
+
+    def get_clients(
+        self, pipeline_stage: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        if pipeline_stage:
+            rows = self._conn.execute(
+                "SELECT * FROM clients WHERE pipeline_stage = ? ORDER BY updated_at DESC LIMIT ?",
+                (pipeline_stage, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM clients ORDER BY updated_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_client(self, client_id: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM clients WHERE id = ?", (client_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ── Financial Tracking ────────────────────────────────────
+
+    def log_financial(
+        self,
+        record_type: str,
+        amount: float,
+        description: str = "",
+        mission_id: int | None = None,
+        client_id: int | None = None,
+        currency: str = "USD",
+    ) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO financial_records
+                   (mission_id, client_id, record_type, amount, currency, description, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (mission_id, client_id, record_type, amount, currency, description, _now()),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def get_financial_summary(self, days: int = 30) -> dict:
+        """Get financial summary for the last N days."""
+        rows = self._conn.execute(
+            """SELECT record_type, SUM(amount) as total, COUNT(*) as count, currency
+               FROM financial_records
+               WHERE created_at > datetime('now', ? || ' days')
+               GROUP BY record_type, currency""",
+            (f"-{days}",),
+        ).fetchall()
+
+        summary = {"revenue": 0.0, "costs": 0.0, "records": 0}
+        for r in rows:
+            if r["record_type"] == "revenue":
+                summary["revenue"] += r["total"] or 0
+            else:
+                summary["costs"] += r["total"] or 0
+            summary["records"] += r["count"]
+
+        summary["profit"] = summary["revenue"] - summary["costs"]
+        return summary
+
+    def get_weekly_report_data(self) -> dict:
+        """Aggregate data for auto-generated weekly reports."""
+        report: dict[str, Any] = {}
+
+        # Missions completed this week
+        rows = self._conn.execute(
+            """SELECT status, COUNT(*) as cnt FROM missions
+               WHERE updated_at > datetime('now', '-7 days')
+               GROUP BY status"""
+        ).fetchall()
+        report["missions"] = {r["status"]: r["cnt"] for r in rows}
+
+        # Top studios by activity
+        rows = self._conn.execute(
+            """SELECT studio, COUNT(*) as cnt FROM tasks
+               WHERE created_at > datetime('now', '-7 days')
+               GROUP BY studio ORDER BY cnt DESC"""
+        ).fetchall()
+        report["studio_activity"] = {r["studio"]: r["cnt"] for r in rows}
+
+        # Financial summary
+        report["financials"] = self.get_financial_summary(7)
+
+        # Pipeline counts
+        rows = self._conn.execute(
+            "SELECT pipeline_stage, COUNT(*) as cnt FROM clients GROUP BY pipeline_stage"
+        ).fetchall()
+        report["pipeline"] = {r["pipeline_stage"]: r["cnt"] for r in rows}
+
+        # Model usage summary
+        rows = self._conn.execute(
+            """SELECT COUNT(*) as calls, SUM(tokens_in + tokens_out) as tokens
+               FROM model_usage WHERE timestamp > datetime('now', '-7 days')"""
+        ).fetchone()
+        report["ai_usage"] = {
+            "calls": rows["calls"] if rows else 0,
+            "tokens": rows["tokens"] if rows else 0,
+        }
+
+        return report
 
     def close(self) -> None:
         self._conn.close()

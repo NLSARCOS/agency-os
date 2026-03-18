@@ -648,6 +648,110 @@ def create_app() -> Any:
         except Exception as e:
             raise HTTPException(500, f"Failed to get log summary: {e}")
 
+    # ── CRM (Clients) ────────────────────────────────────────
+
+    @app.get("/api/clients")
+    async def list_clients(stage: str = "", limit: int = 100):
+        from kernel.state_manager import get_state
+        state = get_state()
+        clients = state.get_clients(pipeline_stage=stage or None, limit=limit)
+        return {"count": len(clients), "clients": clients}
+
+    @app.post("/api/clients")
+    async def create_client(request: Request):
+        from kernel.state_manager import get_state
+        state = get_state()
+        body = await request.json()
+        name = body.get("name", "")
+        if not name:
+            raise HTTPException(400, "name is required")
+        cid = state.create_client(
+            name=name,
+            company=body.get("company", ""),
+            email=body.get("email", ""),
+            phone=body.get("phone", ""),
+            source=body.get("source", ""),
+            notes=body.get("notes", ""),
+            pipeline_stage=body.get("pipeline_stage", "lead"),
+        )
+        return {"status": "created", "id": cid}
+
+    @app.patch("/api/clients/{client_id}")
+    async def update_client(client_id: int, request: Request):
+        from kernel.state_manager import get_state
+        state = get_state()
+        body = await request.json()
+        state.update_client(client_id, **body)
+        return {"status": "updated", "id": client_id}
+
+    @app.get("/api/clients/{client_id}")
+    async def get_client(client_id: int):
+        from kernel.state_manager import get_state
+        state = get_state()
+        c = state.get_client(client_id)
+        if not c:
+            raise HTTPException(404, f"Client #{client_id} not found")
+        return c
+
+    # ── Financial ─────────────────────────────────────────
+
+    @app.get("/api/financials/summary")
+    async def financial_summary(days: int = 30):
+        from kernel.state_manager import get_state
+        return get_state().get_financial_summary(days)
+
+    @app.post("/api/financials")
+    async def log_financial(request: Request):
+        from kernel.state_manager import get_state
+        state = get_state()
+        body = await request.json()
+        fid = state.log_financial(
+            record_type=body.get("type", "cost"),
+            amount=body.get("amount", 0),
+            description=body.get("description", ""),
+            mission_id=body.get("mission_id"),
+            client_id=body.get("client_id"),
+            currency=body.get("currency", "USD"),
+        )
+        return {"status": "recorded", "id": fid}
+
+    # ── Weekly Report ─────────────────────────────────────
+
+    @app.get("/api/report/weekly")
+    async def weekly_report():
+        from kernel.state_manager import get_state
+        return get_state().get_weekly_report_data()
+
+    # ── Pipeline Summary ──────────────────────────────────
+
+    @app.get("/api/pipeline")
+    async def pipeline_summary():
+        from kernel.state_manager import get_state
+        state = get_state()
+        try:
+            stages = state._conn.execute(
+                "SELECT pipeline_stage, COUNT(*) as cnt FROM clients GROUP BY pipeline_stage"
+            ).fetchall()
+            total_revenue = state._conn.execute(
+                "SELECT SUM(total_revenue) as total FROM clients"
+            ).fetchone()
+            return {
+                "stages": {r["pipeline_stage"]: r["cnt"] for r in stages},
+                "total_clients": sum(r["cnt"] for r in stages),
+                "total_revenue": total_revenue["total"] or 0 if total_revenue else 0,
+            }
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    # ── Full Dashboard ────────────────────────────────────
+
+    @app.get("/", response_class=HTMLResponse)
+    async def dashboard():
+        dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
+        if dashboard_path.exists():
+            return HTMLResponse(dashboard_path.read_text())
+        return HTMLResponse(_EMBEDDED_DASHBOARD)
+
     return app
 
 
@@ -660,137 +764,202 @@ def run_server(host: str = "0.0.0.0", port: int = 8080) -> None:
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
-# ── Embedded minimal dashboard ───────────────────────────────
+# ── Full Embedded Dashboard ──────────────────────────────────
 _EMBEDDED_DASHBOARD = """<!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agency OS v3.5 — Dashboard</title>
+<title>Agency OS — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #0f172a; --card: #1e293b; --border: #334155;
-          --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
-          --green: #22c55e; --red: #ef4444; --orange: #f59e0b; }
+  :root {
+    --bg: #0a0e1a; --surface: #111827; --card: #1a2332;
+    --border: #2a3444; --text: #e2e8f0; --muted: #8892a4;
+    --accent: #38bdf8; --green: #22c55e; --red: #ef4444;
+    --orange: #f59e0b; --purple: #a78bfa; --pink: #f472b6;
+    --radius: 12px;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg);
-         color: var(--text); min-height: 100vh; }
-  .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            padding: 1.5rem 2rem; border-bottom: 1px solid var(--border);
-            display: flex; justify-content: space-between; align-items: center; }
-  .header h1 { font-size: 1.5rem; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .header {
+    background: linear-gradient(135deg, rgba(56,189,248,.08), rgba(167,139,250,.08));
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center;
+  }
+  .header h1 { font-size: 1.3rem; font-weight: 700; }
   .header h1 span { color: var(--accent); }
-  .status-dot { width: 10px; height: 10px; border-radius: 50%;
-                display: inline-block; margin-right: 6px; }
-  .status-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .status-dot.offline { background: var(--red); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 1rem; padding: 1.5rem 2rem; }
-  .card { background: var(--card); border: 1px solid var(--border);
-          border-radius: 12px; padding: 1.25rem; }
-  .card h3 { font-size: 0.85rem; color: var(--muted); text-transform: uppercase;
-             letter-spacing: 0.05em; margin-bottom: 0.75rem; }
-  .card .value { font-size: 2rem; font-weight: 700; }
-  .card .value.accent { color: var(--accent); }
-  .card .value.green { color: var(--green); }
-  .card .value.orange { color: var(--orange); }
-  .studio-list { list-style: none; }
-  .studio-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--border);
-                    display: flex; justify-content: space-between; }
-  .studio-list li:last-child { border: none; }
-  .tag { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;
-         background: rgba(56, 189, 248, 0.15); color: var(--accent); }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; }
-  .refresh { color: var(--muted); font-size: 0.8rem; }
-  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; padding: 1rem; } }
+  .header .meta { font-size: .75rem; color: var(--muted); display: flex; gap: 1rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.off { background: var(--red); }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: .75rem; padding: 1rem 2rem; }
+  .span2 { grid-column: span 2; }
+  .span3 { grid-column: span 3; }
+  .span4 { grid-column: span 4; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1rem; overflow: hidden;
+  }
+  .card h3 { font-size: .7rem; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .05em; margin-bottom: .6rem; font-weight: 600; }
+  .big { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+  .sub { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  th { color: var(--muted); font-size: .65rem; text-transform: uppercase; letter-spacing: .04em;
+       padding: .4rem .5rem; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: .4rem .5rem; border-bottom: 1px solid rgba(42,52,68,.5); }
+  tr:hover td { background: rgba(56,189,248,.03); }
+
+  .badge { padding: 2px 8px; border-radius: 4px; font-size: .65rem; font-weight: 600; }
+  .badge.green { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge.orange { background: rgba(245,158,11,.15); color: var(--orange); }
+  .badge.red { background: rgba(239,68,68,.15); color: var(--red); }
+  .badge.blue { background: rgba(56,189,248,.15); color: var(--accent); }
+  .badge.purple { background: rgba(167,139,250,.15); color: var(--purple); }
+
+  .pipeline { display: flex; gap: .5rem; }
+  .pipe-stage {
+    flex: 1; text-align: center; padding: .6rem; border-radius: 8px;
+    background: rgba(56,189,248,.05); border: 1px solid var(--border);
+  }
+  .pipe-stage .count { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .pipe-stage .label { font-size: .65rem; color: var(--muted); margin-top: 2px; }
+
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr 1fr; }
+    .span3, .span4 { grid-column: span 2; } }
+  @media (max-width: 600px) { .layout { grid-template-columns: 1fr; }
+    .span2, .span3, .span4 { grid-column: span 1; } }
 </style>
 </head>
 <body>
 <div class="header">
-  <h1>🏢 Agency OS <span>v3.5</span></h1>
-  <span class="refresh" id="refresh">Loading...</span>
-</div>
-<div class="grid" id="cards"></div>
-<div style="padding: 0 2rem 2rem;">
-  <div class="card" id="audit-card">
-    <h3>📋 Recent AI Calls</h3>
-    <table id="audit-table">
-      <thead><tr><th>Studio</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <h1>🏢 Agency OS <span>Dashboard</span></h1>
+  <div class="meta">
+    <span id="oc-status"><span class="dot off"></span> OpenClaw</span>
+    <span id="uptime">⏱ --</span>
+    <span id="clock">--</span>
   </div>
 </div>
+<div class="layout" id="grid"></div>
 <script>
-async function refresh() {
-  try {
-    const [status, audit, guardrails, autoTasks] = await Promise.all([
-      fetch('/api/status').then(r => r.json()),
-      fetch('/api/audit/summary?days=1').then(r => r.json()),
-      fetch('/api/guardrails').then(r => r.json()),
-      fetch('/api/auto/discover').then(r => r.json()).catch(() => ({count:0})),
-    ]);
-    const oc = status.openclaw === 'connected';
-    document.getElementById('cards').innerHTML = `
-      <div class="card">
-        <h3>🐙 OpenClaw</h3>
-        <div class="value ${oc ? 'green' : 'orange'}">
-          <span class="status-dot ${oc ? 'ok' : 'offline'}"></span>
-          ${oc ? 'Connected' : 'Offline'}
-        </div>
+const API = '';
+async function j(url){return fetch(API+url).then(r=>r.json()).catch(()=>({}))}
+function badge(text, color){return `<span class="badge ${color}">${text}</span>`}
+function pipeStage(name, count){
+  return `<div class="pipe-stage"><div class="count">${count||0}</div><div class="label">${name}</div></div>`;
+}
+
+async function refresh(){
+  const [st, audit, pipe, fin, missions, logs, sched, auto] = await Promise.all([
+    j('/api/status'), j('/api/audit/summary?days=1'), j('/api/pipeline'),
+    j('/api/financials/summary?days=30'), j('/api/missions/active'),
+    j('/api/logs?limit=15'), j('/api/schedule'), j('/api/auto/discover'),
+  ]);
+
+  const oc = st.openclaw === 'connected';
+  document.getElementById('oc-status').innerHTML =
+    `<span class="dot ${oc?'on':'off'}"></span> OpenClaw ${oc?'✓':'✗'}`;
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+
+  const m = st.missions || {};
+  const totalM = Object.values(m).reduce((a,b)=>a+b, 0);
+  const doneM = (m.done||0)+(m.completed||0);
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = `
+    <!-- Row 1: KPIs -->
+    <div class="card">
+      <h3>📋 Misiones Totales</h3>
+      <div class="big" style="color:var(--accent)">${totalM}</div>
+      <div class="sub">${doneM} completadas · ${m.failed||0} fallidas · ${m.running||0} activas</div>
+    </div>
+    <div class="card">
+      <h3>🏢 Studios Activos</h3>
+      <div class="big" style="color:var(--green)">${st.studios||0}</div>
+      <div class="sub">${(st.studio_names||[]).join(', ')}</div>
+    </div>
+    <div class="card">
+      <h3>💰 Revenue (30d)</h3>
+      <div class="big" style="color:var(--green)">$${(fin.revenue||0).toLocaleString()}</div>
+      <div class="sub">Costos: $${(fin.costs||0).toLocaleString()} · Profit: $${(fin.profit||0).toLocaleString()}</div>
+    </div>
+    <div class="card">
+      <h3>🤖 IA (24h)</h3>
+      <div class="big" style="color:var(--purple)">${audit.total_calls||0}</div>
+      <div class="sub">${(audit.total_tokens||0).toLocaleString()} tokens · $${(audit.total_cost_usd||0).toFixed(3)}</div>
+    </div>
+
+    <!-- Row 2: Pipeline -->
+    <div class="card span4">
+      <h3>🔄 Pipeline de Clientes (${pipe.total_clients||0} total · $${(pipe.total_revenue||0).toLocaleString()} revenue)</h3>
+      <div class="pipeline">
+        ${pipeStage('🎯 Leads', (pipe.stages||{}).lead)}
+        ${pipeStage('🔍 Prospecto', (pipe.stages||{}).prospect)}
+        ${pipeStage('✅ Activo', (pipe.stages||{}).active)}
+        ${pipeStage('💰 Facturado', (pipe.stages||{}).invoiced)}
+        ${pipeStage('📦 Entregado', (pipe.stages||{}).delivered)}
+        ${pipeStage('❌ Churn', (pipe.stages||{}).churned)}
       </div>
-      <div class="card">
-        <h3>🏢 Studios</h3>
-        <div class="value accent">${status.studios}</div>
-        <ul class="studio-list">${status.studio_names.map(s =>
-          `<li>${s} <span class="tag">active</span></li>`).join('')}</ul>
-      </div>
-      <div class="card">
-        <h3>📋 Workflows</h3>
-        <div class="value accent">${status.workflows}</div>
-      </div>
-      <div class="card">
-        <h3>🧠 Memory</h3>
-        <div class="value">${status.memories} <small style="font-size:0.5em;color:var(--muted)">memories</small></div>
-        <div style="color:var(--muted);margin-top:4px">${status.knowledge} knowledge items</div>
-      </div>
-      <div class="card">
-        <h3>📊 AI Calls (24h)</h3>
-        <div class="value accent">${audit.total_calls}</div>
-        <div style="color:var(--muted);margin-top:4px">${audit.total_tokens?.toLocaleString() || 0} tokens · $${audit.total_cost_usd?.toFixed(4) || '0'}</div>
-      </div>
-      <div class="card">
-        <h3>🛡️ Guardrails</h3>
-        <div class="value green">${guardrails.budgets_configured} budgets</div>
-        <div style="color:var(--muted);margin-top:4px">${guardrails.scopes_tracked} scopes tracked</div>
-      </div>
-      <div class="card">
-        <h3>🤖 Auto-Tasks</h3>
-        <div class="value orange">${autoTasks.count}</div>
-        <div style="color:var(--muted);margin-top:4px">discovered by autonomy engine</div>
-      </div>
-      <div class="card">
-        <h3>✅ Success Rate</h3>
-        <div class="value green">${audit.success_rate || 100}%</div>
-        <div style="color:var(--muted);margin-top:4px">avg ${Math.round(audit.avg_latency_ms || 0)}ms latency</div>
-      </div>
-    `;
-    // Recent calls
-    const recent = await fetch('/api/audit/recent?limit=10').then(r => r.json());
-    const tbody = document.querySelector('#audit-table tbody');
-    tbody.innerHTML = (recent.entries || []).map(e => `
-      <tr>
-        <td>${e.studio}</td><td>${e.model}</td>
-        <td>${((e.tokens_in||0)+(e.tokens_out||0)).toLocaleString()}</td>
-        <td>$${(e.estimated_cost||0).toFixed(4)}</td>
-        <td>${Math.round(e.latency_ms||0)}ms</td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" style="color:var(--muted)">No calls yet</td></tr>';
-    document.getElementById('refresh').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-  } catch(e) { document.getElementById('refresh').textContent = 'Error: ' + e.message; }
+    </div>
+
+    <!-- Row 3: Active Missions + Autonomy + Scheduled -->
+    <div class="card span2">
+      <h3>🚀 Misiones Activas (${(missions.missions||[]).length})</h3>
+      <table>
+        <thead><tr><th>ID</th><th>Misión</th><th>Studio</th><th>Estado</th><th>Prio</th></tr></thead>
+        <tbody>
+          ${(missions.missions||[]).map(m=>`<tr>
+            <td>#${m.id}</td><td>${(m.name||'').slice(0,40)}</td>
+            <td>${badge(m.studio,'blue')}</td>
+            <td>${badge(m.status, m.status==='running'?'green':'orange')}</td>
+            <td>${m.priority}</td>
+          </tr>`).join('')||'<tr><td colspan="5" style="color:var(--muted)">Sin misiones activas</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>🧠 Autonomía</h3>
+      <div class="big" style="color:var(--orange)">${auto.count||0}</div>
+      <div class="sub">tareas auto-descubiertas</div>
+      ${(auto.tasks||[]).slice(0,3).map(t=>
+        `<div style="margin-top:6px;font-size:.7rem;color:var(--muted)">↳ ${t.task?.slice(0,50)}</div>`
+      ).join('')}
+    </div>
+    <div class="card">
+      <h3>⏰ Tareas Programadas</h3>
+      <div class="big" style="color:var(--accent)">${sched.count||0}</div>
+      <div class="sub">tareas activas</div>
+      ${(sched.tasks||[]).slice(0,3).map(t=>
+        `<div style="margin-top:6px;font-size:.7rem;color:var(--muted)">↳ ${t.name} (${t.interval_minutes}min)</div>`
+      ).join('')}
+    </div>
+
+    <!-- Row 4: Logs -->
+    <div class="card span4">
+      <h3>📝 Logs Recientes</h3>
+      <table>
+        <thead><tr><th>Hora</th><th>Nivel</th><th>Fuente</th><th>Mensaje</th></tr></thead>
+        <tbody>
+          ${(logs.logs||[]).map(l=>`<tr>
+            <td style="white-space:nowrap;font-size:.7rem">${l.timestamp?.slice(11,19)||''}</td>
+            <td>${badge(l.level, l.level==='error'?'red':l.level==='warning'?'orange':'green')}</td>
+            <td style="font-size:.7rem">${l.source||''}</td>
+            <td style="font-size:.75rem;max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(l.message||'').slice(0,80)}</td>
+          </tr>`).join('')||'<tr><td colspan="4" style="color:var(--muted)">Sin logs recientes</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 refresh();
-setInterval(refresh, 5000);
+setInterval(refresh, 8000);
 </script>
 </body>
 </html>"""
+

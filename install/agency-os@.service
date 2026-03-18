@@ -1,0 +1,30 @@
+[Unit]
+Description=Agency OS — AI Agency Operating System
+Documentation=https://github.com/NLSARCOS/agency-os
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/Documentos/GitHub/agency-os
+Environment=PATH=/home/%i/Documentos/GitHub/agency-os/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/%i/Documentos/GitHub/agency-os/.venv/bin/python -m kernel.cli start
+Restart=on-failure
+RestartSec=10
+WatchdogSec=300
+
+# Logging
+StandardOutput=append:/var/log/agency-os/output.log
+StandardError=append:/var/log/agency-os/error.log
+
+# Resource Limits
+MemoryMax=2G
+CPUQuota=80%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/%i/Documentos/GitHub/agency-os/data /var/log/agency-os
+
+[Install]
+WantedBy=multi-user.target

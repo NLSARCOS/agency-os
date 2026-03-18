@@ -157,6 +157,9 @@ class AgencyHeartbeat:
         except Exception:
             pass
 
+        # ── Seed default scheduled tasks (first boot) ─────────
+        self._seed_default_tasks()
+
         try:
             while self.is_running:
                 await self._tick()
@@ -262,7 +265,90 @@ class AgencyHeartbeat:
                         pass
         except Exception as e:
             logger.debug("Autonomy cycle skipped: %s", e)
-            
+
+    def _seed_default_tasks(self) -> None:
+        """Seed default scheduled tasks on first boot."""
+        defaults = [
+            {
+                "name": "daily_lead_search",
+                "prompt": (
+                    "Busca 5 leads potenciales para servicios de desarrollo web, "
+                    "automatización o marketing digital. Incluye nombre, empresa, "
+                    "fuente y razón por la que son un buen prospecto."
+                ),
+                "interval_minutes": 1440,  # 24h
+                "studio": "leadops",
+                "priority": 6,
+            },
+            {
+                "name": "daily_social_content",
+                "prompt": (
+                    "Genera 2 ideas de contenido para redes sociales (LinkedIn/Twitter) "
+                    "sobre tendencias en desarrollo web, IA o marketing digital. "
+                    "Incluye el copy listo para publicar."
+                ),
+                "interval_minutes": 1440,
+                "studio": "creative",
+                "priority": 4,
+            },
+            {
+                "name": "weekly_competitive_analysis",
+                "prompt": (
+                    "Analiza 3 competidores en el espacio de agencias digitales. "
+                    "Identifica sus fortalezas, debilidades y oportunidades que "
+                    "podemos explotar. Presenta un resumen ejecutivo."
+                ),
+                "interval_minutes": 10080,  # 7 days
+                "studio": "analytics",
+                "priority": 5,
+            },
+            {
+                "name": "weekly_performance_report",
+                "prompt": (
+                    "Genera un reporte semanal de rendimiento: misiones completadas, "
+                    "leads generados, revenue, costos de IA, y métricas clave. "
+                    "Envía el resumen al dueño."
+                ),
+                "interval_minutes": 10080,
+                "studio": "analytics",
+                "priority": 7,
+            },
+            {
+                "name": "daily_revenue_check",
+                "prompt": (
+                    "Revisa el estado financiero del día: ingresos vs costos, "
+                    "misiones activas por cliente, y alerta si hay anomalías "
+                    "o clientes que necesitan seguimiento."
+                ),
+                "interval_minutes": 1440,
+                "studio": "sales",
+                "priority": 5,
+            },
+        ]
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self._db_path)
+            seeded = 0
+            for task in defaults:
+                try:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO scheduled_tasks
+                           (name, prompt, interval_minutes, studio, priority, enabled, created_at)
+                           VALUES (?, ?, ?, ?, ?, 1, datetime('now'))""",
+                        (task["name"], task["prompt"], task["interval_minutes"],
+                         task["studio"], task["priority"]),
+                    )
+                    if conn.total_changes:
+                        seeded += 1
+                except Exception:
+                    pass
+            conn.commit()
+            conn.close()
+            if seeded:
+                logger.info("Seeded %d default scheduled tasks", seeded)
+        except Exception as e:
+            logger.debug("Could not seed scheduled tasks: %s", e)
+
     async def _run_hustle_cycle(self) -> None:
         logger.info("Heartbeat: Triggering Hustle Cycle...")
         try:
@@ -396,17 +482,23 @@ class AgencyHeartbeat:
             for task in rows:
                 task_name = task["name"]
                 prompt = task["prompt"]
-                studio = task["studio"] or None
+                studio = task["studio"] or "analytics"
                 priority = task["priority"] or 5
 
                 logger.info("Scheduled task due: %s", task_name)
 
                 try:
-                    # Plan and queue via mission engine
-                    objective = f"[Scheduled: {task_name}] {prompt}"
-                    result = await self._mission_engine.plan_objective(
-                        objective,
+                    # Create mission directly via state manager
+                    import json
+                    mission_id = state.create_mission(
+                        name=f"[Scheduled] {task_name}",
+                        description=prompt,
+                        studio=studio,
                         priority=priority,
+                        metadata=json.dumps({
+                            "source": "scheduled_task",
+                            "task_name": task_name,
+                        }),
                     )
 
                     # Update last_run_at
@@ -417,9 +509,8 @@ class AgencyHeartbeat:
                     state._conn.commit()
 
                     logger.info(
-                        "Scheduled task '%s' queued: %d missions",
-                        task_name,
-                        result.get("mission_count", 0),
+                        "Scheduled task '%s' → mission #%d (studio: %s)",
+                        task_name, mission_id, studio,
                     )
                 except Exception as e:
                     logger.error("Scheduled task '%s' failed to queue: %s", task_name, e)
