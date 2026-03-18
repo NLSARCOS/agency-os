@@ -277,15 +277,58 @@ class AgencyHeartbeat:
                 self._mission_engine = MissionEngine()
                 self._mission_engine.auto_discover_studios()
 
+            # Clean up stuck missions (running > 30 minutes = likely hung)
+            self._cleanup_stuck_missions()
+
             result = await self._mission_engine.run_parallel_cycle()
             if result.get("action") != "idle":
                 studios = result.get("studios", 0)
                 succeeded = result.get("succeeded", 0)
+                failed = result.get("failed", 0)
                 logger.info(
-                    "Mission cycle: %d studios, %d succeeded", studios, succeeded
+                    "Mission cycle: %d studios, %d succeeded, %d failed",
+                    studios, succeeded, failed,
                 )
+                # Proactive notification on completion
+                if succeeded > 0:
+                    try:
+                        from kernel.openclaw_bridge import get_openclaw
+                        get_openclaw().notify_owner(
+                            f"✅ Mission cycle: {succeeded} completed, {failed} failed"
+                        )
+                    except Exception:
+                        pass
         except Exception as e:
-            logger.error(f"Mission cycle failed: {e}")
+            logger.error("Mission cycle failed: %s", e, exc_info=True)
+
+    def _cleanup_stuck_missions(self) -> None:
+        """Mark missions stuck in 'running' for >30min as failed."""
+        try:
+            from kernel.state_manager import get_state
+            state = get_state()
+            stuck = state._conn.execute(
+                """UPDATE missions 
+                   SET status = 'failed', 
+                       completed_at = datetime('now')
+                   WHERE status = 'running' 
+                   AND started_at < datetime('now', '-30 minutes')
+                   RETURNING id, name"""
+            ).fetchall()
+            if stuck:
+                state._conn.commit()
+                for row in stuck:
+                    logger.warning(
+                        "Cleaned stuck mission #%d: %s", row[0], row[1]
+                    )
+                try:
+                    from kernel.openclaw_bridge import get_openclaw
+                    get_openclaw().notify_owner(
+                        f"🧹 Cleaned {len(stuck)} stuck missions"
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug("Stuck mission cleanup error: %s", e)
 
     async def _run_scheduled_tasks(self) -> None:
         """Execute dynamic scheduled tasks from the API-created schedule."""

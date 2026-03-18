@@ -122,13 +122,26 @@ class ModelRouter:
         task_id: int | None = None,
         max_retries: int = 2,
     ) -> ModelResponse:
-        """Call the best available model with automatic fallback."""
+        """Call the best available model with automatic fallback.
+        
+        On 429: immediately skip to next model (don't waste time retrying).
+        On other errors: retry up to max_retries then move on.
+        Total timeout: 60s for the entire model selection process.
+        """
         models = self.get_models_for_studio(studio)
         if not models:
             models = self.pools.get(studio, [])  # Try all including unhealthy
 
         last_error = ""
+        total_start = time.monotonic()
+        TOTAL_TIMEOUT = 60  # Max seconds to spend trying all models
+
         for model_cfg in models:
+            # Check total timeout
+            if (time.monotonic() - total_start) > TOTAL_TIMEOUT:
+                logger.warning("Model selection timed out after %ds", TOTAL_TIMEOUT)
+                break
+
             for attempt in range(max_retries):
                 try:
                     response = self._call_provider(model_cfg, prompt, system)
@@ -147,20 +160,20 @@ class ModelRouter:
                     return response
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 429:
-                        retry_after = int(e.response.headers.get("Retry-After", "5"))
+                        # Rate limited → skip to NEXT model immediately
                         logger.warning(
-                            "Model %s rate limited (429). Waiting %ds...",
-                            model_cfg["name"], retry_after,
+                            "Model %s rate limited (429) → skipping to next model",
+                            model_cfg["name"],
                         )
-                        time.sleep(retry_after)
-                        continue  # retry same model
+                        self._update_health(model_cfg["name"], False, "429 rate limited")
+                        break  # Break inner loop → move to next model
                     last_error = str(e)
                     logger.warning(
                         "Model %s attempt %d failed: %s",
                         model_cfg["name"], attempt + 1, last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
-                    time.sleep(1 * (attempt + 1))
+                    time.sleep(min(1 * (attempt + 1), 3))  # Max 3s backoff
                 except Exception as e:
                     last_error = str(e)
                     logger.warning(
@@ -168,7 +181,7 @@ class ModelRouter:
                         model_cfg["name"], attempt + 1, last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
-                    time.sleep(1 * (attempt + 1))
+                    time.sleep(min(1 * (attempt + 1), 3))
 
         # All models failed
         state = get_state()
