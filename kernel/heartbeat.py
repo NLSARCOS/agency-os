@@ -244,7 +244,16 @@ class AgencyHeartbeat:
             # The evolution engine checks if the code is messy or if tests are failing
             self._evolution.evolve()
         except Exception as e:
-            logger.error(f"Evolution cycle failed: {e}")
+            logger.error(
+                "Evolution cycle failed: %s", e, exc_info=True
+            )
+            try:
+                from kernel.openclaw_bridge import get_openclaw
+                get_openclaw().notify_owner(
+                    f"🚨 Evolution cycle failed: {e}"
+                )
+            except Exception:
+                pass
 
     async def _run_learning_cycle(self) -> None:
         """Analyze past missions and extract learnings."""

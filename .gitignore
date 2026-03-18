@@ -17,3 +17,13 @@ reports/latest_report.md
 .DS_Store
 node_modules/
 data/jobs.db
+
+# Runtime data
+notifications/
+data/
+logs/
+reports/
+.venv/
+__pycache__/
+*.pyc
+*.db

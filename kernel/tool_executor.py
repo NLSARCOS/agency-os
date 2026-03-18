@@ -570,5 +570,12 @@ class ToolExecutor:
         self._http.close()
 
 
+_tool_executor: ToolExecutor | None = None
+
+
 def get_tool_executor() -> ToolExecutor:
-    return ToolExecutor()
+    """Singleton — preserves tool cache, history, and HTTP connections."""
+    global _tool_executor
+    if _tool_executor is None:
+        _tool_executor = ToolExecutor()
+    return _tool_executor

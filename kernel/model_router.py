@@ -391,5 +391,12 @@ class ModelRouter:
         self._client.close()
 
 
+_model_router: ModelRouter | None = None
+
+
 def get_model_router() -> ModelRouter:
-    return ModelRouter()
+    """Singleton — preserves health tracking, model stats, and HTTP pool."""
+    global _model_router
+    if _model_router is None:
+        _model_router = ModelRouter()
+    return _model_router

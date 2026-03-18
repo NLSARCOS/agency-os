@@ -467,7 +467,7 @@ class AutonomyEngine:
 
     # ── MAIN LOOP ─────────────────────────────────────────────
 
-    def run_cycle(self, max_tasks: int = 3, dry_run: bool = True) -> dict[str, Any]:
+    def run_cycle(self, max_tasks: int = 3, dry_run: bool = False) -> dict[str, Any]:
         """
         Run one autonomy cycle:
         1. Discover tasks

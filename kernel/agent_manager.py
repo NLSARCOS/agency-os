@@ -252,7 +252,10 @@ class AgentManager:
 
         return "\n".join(parts)
 
-    # ── Execute Task ──────────────────────────────────────────
+    # ── Execute Task (ReAct Loop + OpenClaw-first) ─────────────
+
+    MAX_REACT_ITERATIONS = 8
+    TASK_TIMEOUT_SECONDS = 300  # 5 minutes max per task
 
     def execute_task(
         self,
@@ -263,15 +266,14 @@ class AgentManager:
         studio: str = "",
     ) -> dict[str, Any]:
         """
-        Execute a task using a specific agent.
+        Execute a task using a specific agent with ReAct tool-calling loop.
 
-        Flow:
-        1. Load agent profile + skills
-        2. Build system prompt
-        3. Call LLM via ModelRouter (codex/ollama/openrouter based on studio)
-        4. Parse tool calls if any
-        5. Execute tools
-        6. Return result
+        Flow (ReAct pattern — inspired by CrewAI/LangGraph):
+        1. Load agent profile + skills → build system prompt
+        2. Call LLM (OpenClaw first → ModelRouter fallback)
+        3. If LLM returns tool_calls → execute tools → feed results back
+        4. Repeat until LLM gives final answer or max iterations
+        5. Return result with all tool outputs
         """
         agent = self._agents.get(agent_id)
         if not agent:
@@ -291,13 +293,13 @@ class AgentManager:
         if agent.memory:
             recent = agent.memory[-3:]
             memory_context = "\n".join(
-                f"[Previous] {m.get('role', '')}: {m.get('content', '')[:200]}"
+                f"[Previous] {m.get('role', '')}: {m.get('content', '')[:300]}"
                 for m in recent
             )
             if memory_context:
                 user_msg = f"Recent context:\n{memory_context}\n\n{user_msg}"
 
-        # Inject learnings from past missions (self-learning)
+        # Inject learnings from past missions
         try:
             from kernel.mission_learner import get_mission_learner
             learner = get_mission_learner()
@@ -315,58 +317,96 @@ class AgentManager:
         # Determine studio for model selection
         target_studio = studio or self._studio_for_agent(agent_id) or "dev"
 
-        # Call LLM via ModelRouter (multi-provider with automatic fallback)
-        import asyncio
-        router = self._get_model_router()
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    resp = pool.submit(
-                        asyncio.run,
-                        router.call_model(target_studio, user_msg, system_prompt)
-                    ).result()
-            else:
-                resp = asyncio.run(
-                    router.call_model(target_studio, user_msg, system_prompt)
+        # Build tool definitions if tools are enabled
+        tool_defs = self._build_tool_defs(agent_id) if tools_enabled else []
+
+        # ── ReAct Loop: LLM → Tools → LLM → ... → Final Answer ──
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_msg),
+        ]
+        all_tool_results: list[dict] = []
+        content = ""
+        model_used = ""
+        provider_used = ""
+
+        for iteration in range(self.MAX_REACT_ITERATIONS):
+            # Timeout check
+            elapsed = time.monotonic() - start
+            if elapsed > self.TASK_TIMEOUT_SECONDS:
+                logger.warning(
+                    "Agent %s task timed out after %.0fs", agent_id, elapsed
                 )
+                break
 
-            content = resp.content
-            model_used = resp.model
-            provider_used = resp.provider
-            latency = resp.latency_ms
-
-        except Exception as model_err:
-            # Fallback to OpenClaw bridge if ModelRouter fails entirely
-            logger.warning(
-                "ModelRouter failed for %s/%s, falling back to OpenClaw: %s",
-                target_studio, agent_id, model_err,
-            )
-            oc = self._get_openclaw()
-            response = oc.chat(
-                messages=[ChatMessage(role="user", content=user_msg)],
-                system=system_prompt,
+            # ── Call LLM (OpenClaw first, then ModelRouter fallback) ──
+            response = self._call_llm(
+                messages=messages,
                 agent_id=agent_id,
-                model=agent.model if agent.model != "inherit" else "",
+                agent=agent,
+                studio=target_studio,
+                system_prompt=system_prompt,
+                tools=tool_defs if tools_enabled else None,
             )
-            if not response.success:
+
+            if not response["success"]:
                 agent.stats["tasks_failed"] += 1
                 agent.active = False
-                return {"success": False, "error": response.error, "agent": agent_id}
+                return {
+                    "success": False,
+                    "error": response.get("error", "LLM call failed"),
+                    "agent": agent_id,
+                    "tool_results": all_tool_results,
+                }
 
-            content = response.content
-            model_used = response.model
-            provider_used = "openclaw-fallback"
-            latency = (time.monotonic() - start) * 1000
+            content = response["content"]
+            model_used = response.get("model", "")
+            provider_used = response.get("provider", "")
+            tool_calls = response.get("tool_calls", [])
 
-        # Update memory
+            # If no tool calls → final answer, break
+            if not tool_calls:
+                logger.info(
+                    "Agent %s: final answer at iteration %d",
+                    agent_id, iteration + 1,
+                )
+                break
+
+            # ── Execute tool calls ──
+            logger.info(
+                "Agent %s: %d tool_calls at iteration %d",
+                agent_id, len(tool_calls), iteration + 1,
+            )
+
+            # Add assistant message with tool_calls to conversation
+            messages.append(ChatMessage(
+                role="assistant",
+                content=content or "",
+                tool_calls=tool_calls,
+            ))
+
+            # Execute each tool and add results
+            tool_results = self._execute_tool_calls(agent_id, tool_calls)
+            for tc, result in zip(tool_calls, tool_results):
+                tool_name = tc.get("function", {}).get("name", "unknown")
+                result_text = result.output if result.success else f"Error: {result.error}"
+                all_tool_results.append({
+                    "tool": tool_name,
+                    "success": result.success,
+                    "output": result_text[:2000],
+                })
+                # Add tool result message for next LLM iteration
+                messages.append(ChatMessage(
+                    role="tool",
+                    content=result_text[:2000],
+                    tool_call_id=tc.get("id", ""),
+                    name=tool_name,
+                ))
+
+        # ── Finalize ──
         self._update_memory(agent, task, content)
-
-        # Update stats
         agent.stats["tasks_completed"] += 1
         agent.active = False
-
         duration = (time.monotonic() - start) * 1000
 
         # Emit event
@@ -379,6 +419,7 @@ class AgentManager:
                 "model": model_used,
                 "provider": provider_used,
                 "studio": target_studio,
+                "tools_used": len(all_tool_results),
             },
             source=agent_id,
         ))
@@ -391,7 +432,120 @@ class AgentManager:
             "provider": provider_used,
             "studio": target_studio,
             "duration_ms": round(duration, 1),
+            "tool_results": all_tool_results,
+            "react_iterations": min(iteration + 1, self.MAX_REACT_ITERATIONS),
         }
+
+    def _call_llm(
+        self,
+        messages: list[ChatMessage],
+        agent_id: str,
+        agent: AgentProfile,
+        studio: str,
+        system_prompt: str,
+        tools: list[dict] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Call LLM with OpenClaw-first strategy + ModelRouter fallback.
+        Returns dict with: success, content, model, provider, tool_calls
+        """
+        # ── Strategy 1: OpenClaw (primary — supports tools + sessions) ──
+        try:
+            oc = self._get_openclaw()
+            if oc.is_available():
+                response = oc.chat(
+                    messages=messages,
+                    system=system_prompt,
+                    agent_id=agent_id,
+                    model=agent.model if agent.model != "inherit" else "",
+                    tools=tools,
+                )
+                if response.success and response.content:
+                    return {
+                        "success": True,
+                        "content": response.content,
+                        "model": response.model,
+                        "provider": f"openclaw:{response.provider}",
+                        "tool_calls": response.tool_calls or [],
+                    }
+                elif response.success and response.tool_calls:
+                    # Tool calls with no text content (valid)
+                    return {
+                        "success": True,
+                        "content": "",
+                        "model": response.model,
+                        "provider": f"openclaw:{response.provider}",
+                        "tool_calls": response.tool_calls,
+                    }
+                else:
+                    logger.warning(
+                        "OpenClaw returned empty for %s: %s",
+                        agent_id, response.error,
+                    )
+        except Exception as e:
+            logger.warning("OpenClaw failed for %s: %s", agent_id, e)
+
+        # ── Strategy 2: ModelRouter fallback (multi-provider) ──
+        try:
+            router = self._get_model_router()
+            # Extract the user prompt from messages for the router
+            user_prompt = ""
+            for m in reversed(messages):
+                if m.role == "user":
+                    user_prompt = m.content
+                    break
+            if not user_prompt:
+                user_prompt = messages[-1].content if messages else ""
+
+            # FIX C1: call_model(prompt, studio, system) — correct order
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(
+                            asyncio.run,
+                            router.call_model(
+                                prompt=user_prompt,
+                                studio=studio,
+                                system=system_prompt,
+                            ),
+                        )
+                        resp = future.result(timeout=self.TASK_TIMEOUT_SECONDS)
+                else:
+                    resp = asyncio.run(
+                        router.call_model(
+                            prompt=user_prompt,
+                            studio=studio,
+                            system=system_prompt,
+                        )
+                    )
+            except RuntimeError:
+                resp = asyncio.run(
+                    router.call_model(
+                        prompt=user_prompt,
+                        studio=studio,
+                        system=system_prompt,
+                    )
+                )
+
+            if resp.success:
+                return {
+                    "success": True,
+                    "content": resp.content,
+                    "model": resp.model,
+                    "provider": resp.provider,
+                    "tool_calls": [],  # ModelRouter doesn't support tool_calls
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": resp.error or "ModelRouter returned empty",
+                }
+        except Exception as e:
+            logger.error("All LLM backends failed for %s: %s", agent_id, e)
+            return {"success": False, "error": str(e)}
 
     def _studio_for_agent(self, agent_id: str) -> str:
         """Map agent to its most likely studio for model selection."""
@@ -525,18 +679,21 @@ class AgentManager:
 
     # ── Memory ────────────────────────────────────────────────
 
+    _MEMORY_CONTENT_LIMIT = 2000  # Was 500 — too aggressive truncation
+
     def _update_memory(
         self, agent: AgentProfile, task: str, response: str
     ) -> None:
         """Update agent's memory (in-memory + persistent SQLite)."""
+        limit = self._MEMORY_CONTENT_LIMIT
         agent.memory.append({
             "role": "user",
-            "content": task[:500],
+            "content": task[:limit],
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         agent.memory.append({
             "role": "assistant",
-            "content": response[:500],
+            "content": response[:limit],
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         # Prune old memories
@@ -547,10 +704,10 @@ class AgentManager:
         try:
             from kernel.state_manager import get_state
             state = get_state()
-            state.save_agent_memory(agent.id, "user", task[:500])
-            state.save_agent_memory(agent.id, "assistant", response[:500])
-        except Exception:
-            pass  # Non-critical
+            state.save_agent_memory(agent.id, "user", task[:limit])
+            state.save_agent_memory(agent.id, "assistant", response[:limit])
+        except Exception as e:
+            logger.debug("Memory persistence failed: %s", e)
 
     def get_agent_memory(self, agent_id: str, limit: int = 10) -> list[dict]:
         agent = self._agents.get(agent_id)
@@ -678,7 +835,13 @@ class AgentManager:
         ]
 
 
+_agent_manager: AgentManager | None = None
+
+
 def get_agent_manager() -> AgentManager:
-    mgr = AgentManager()
-    mgr.load_agents()
-    return mgr
+    """Singleton — reuses the same instance to preserve agent memory/state."""
+    global _agent_manager
+    if _agent_manager is None:
+        _agent_manager = AgentManager()
+        _agent_manager.load_agents()
+    return _agent_manager

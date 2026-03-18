@@ -291,9 +291,9 @@ class MissionEngine:
     ) -> None:
         """Send Telegram/console notification on mission completion."""
         try:
-            from kernel.notifier import Notifier, NotificationPriority
+            from kernel.notifier import get_notifier, NotificationPriority
 
-            notifier = Notifier()
+            notifier = get_notifier()
             success = result.get("success", False)
 
             if success:
@@ -359,7 +359,18 @@ class MissionEngine:
                 error=result.get("error", ""),
             )
         except Exception as e:
-            logger.debug("OpenClaw callback failed for #%d: %s", mission_id, e)
+            logger.warning("OpenClaw callback failed for #%d: %s", mission_id, e)
+
+    def _report_progress(self, mission_id: int, message: str) -> None:
+        """Send real-time progress update via OpenClaw → Telegram → Console."""
+        try:
+            from kernel.openclaw_bridge import get_openclaw
+            oc = get_openclaw()
+            oc.notify_owner(f"🔄 Mission #{mission_id}: {message}")
+        except Exception as e:
+            logger.debug("Progress report failed for #%d: %s", mission_id, e)
+            # Fallback to console
+            print(f"🔄 Mission #{mission_id}: {message}")
 
     # ── DAG Planning ──────────────────────────────────────────
 
@@ -438,6 +449,8 @@ class MissionEngine:
 
     # ── DAG Execution ─────────────────────────────────────────
 
+    DAG_TIMEOUT_SECONDS = 1800  # 30 minutes max for entire DAG
+
     def _execute_dag(
         self,
         mission_id: int,
@@ -446,15 +459,35 @@ class MissionEngine:
         """
         Execute mission steps as a DAG.
         Steps with no unmet dependencies run in order.
+        Includes global timeout and OpenClaw progress reporting.
         """
         step_map = {s.id: s for s in steps}
         results: dict[str, dict] = {}
         completed = set()
+        dag_start = time.monotonic()
 
         max_iterations = len(steps) * 2  # Safety limit
         iteration = 0
 
         while len(completed) < len(steps) and iteration < max_iterations:
+            # Global timeout check
+            if (time.monotonic() - dag_start) > self.DAG_TIMEOUT_SECONDS:
+                logger.error(
+                    "Mission #%d DAG timed out after %ds",
+                    mission_id, self.DAG_TIMEOUT_SECONDS,
+                )
+                remaining = [s.id for s in steps if s.id not in completed]
+                for sid in remaining:
+                    results[sid] = {
+                        "status": "failed",
+                        "error": f"DAG timeout after {self.DAG_TIMEOUT_SECONDS}s",
+                    }
+                # Notify via OpenClaw
+                self._report_progress(
+                    mission_id,
+                    f"⏰ Mission #{mission_id} timed out. {len(completed)}/{len(steps)} steps completed.",
+                )
+                break
             iteration += 1
             progress = False
 
@@ -531,6 +564,14 @@ class MissionEngine:
 
                 completed.add(step.id)
                 progress = True
+
+                # Report step progress via OpenClaw
+                status_icon = "✅" if step.status == "completed" else "❌"
+                self._report_progress(
+                    mission_id,
+                    f"{status_icon} Step '{step.name}' {step.status} "
+                    f"({len(completed)}/{len(steps)} steps done)",
+                )
 
                 # Create task record
                 task_id = self.state.create_task(

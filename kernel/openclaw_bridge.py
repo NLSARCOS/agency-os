@@ -712,5 +712,12 @@ class OpenClawBridge:
         self._client.close()
 
 
+_openclaw: OpenClawBridge | None = None
+
+
 def get_openclaw() -> OpenClawBridge:
-    return OpenClawBridge()
+    """Singleton — preserves sessions, health checks, and HTTP connection pool."""
+    global _openclaw
+    if _openclaw is None:
+        _openclaw = OpenClawBridge()
+    return _openclaw

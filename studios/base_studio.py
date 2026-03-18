@@ -67,7 +67,12 @@ class BaseStudio(ABC):
     name: str = "base"
     description: str = "Base studio"
     agent_ref: str = ""  # Reference to .agent/agents/*.md
-    skills_refs: list[str] = []  # References to .agent/skills/*/
+    skills_refs: list[str] = None  # References to .agent/skills/*/
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if cls.skills_refs is None:
+            cls.skills_refs = []
 
     def __init__(self) -> None:
         self.cfg = get_config()
@@ -384,11 +389,46 @@ class BaseStudio(ABC):
     def review(self, execution_result: dict[str, Any]) -> dict[str, Any]:
         """Phase 4: Quality gate — validate execution results."""
         output = execution_result.get("output", "")
-        passed = bool(output and len(str(output)) > 10)
+
+        # Basic sanity check first
+        if not output or len(str(output)) < 20:
+            return {
+                **execution_result,
+                "review_passed": False,
+                "review_notes": "Output too short or empty",
+            }
+
+        # LLM-based quality check via OpenClaw (fast, one-shot)
+        quality_notes = "Passed structural check"
+        passed = True
+        try:
+            from kernel.openclaw_bridge import get_openclaw
+            oc = get_openclaw()
+            if oc.is_available():
+                verdict = oc.ask(
+                    prompt=(
+                        f"Rate the quality of this output (1-10) and give a brief reason. "
+                        f"Only respond with: SCORE: X\nREASON: ...\n\n"
+                        f"Output to evaluate:\n{str(output)[:1500]}"
+                    ),
+                    system="You are a QA reviewer. Be concise.",
+                    agent_id="quality-gate",
+                )
+                if verdict:
+                    quality_notes = verdict[:300]
+                    # Parse score if present
+                    import re
+                    score_match = re.search(r'SCORE:\s*(\d+)', verdict)
+                    if score_match:
+                        score = int(score_match.group(1))
+                        passed = score >= 5
+        except Exception as e:
+            logger.debug("LLM quality check skipped: %s", e)
+
         return {
             **execution_result,
             "review_passed": passed,
-            "review_notes": "Passed basic quality check" if passed else "Output too short or empty",
+            "review_notes": quality_notes,
         }
 
     def deliver(self, review_result: dict[str, Any]) -> StudioResult:
@@ -467,8 +507,15 @@ class BaseStudio(ABC):
             ).to_dict()
 
 
+_studios_cache: dict[str, BaseStudio] | None = None
+
+
 def load_all_studios() -> dict[str, BaseStudio]:
-    """Auto-discover and load all studio implementations."""
+    """Auto-discover and load all studio implementations (singleton cache)."""
+    global _studios_cache
+    if _studios_cache is not None:
+        return _studios_cache
+
     studios: dict[str, BaseStudio] = {}
 
     # Import each studio's pipeline module
@@ -493,4 +540,5 @@ def load_all_studios() -> dict[str, BaseStudio]:
         except (ImportError, AttributeError) as e:
             logger.debug("Studio %s not available: %s", name, e)
 
+    _studios_cache = studios
     return studios
