@@ -145,6 +145,18 @@ class AgencyHeartbeat:
             f"Evolve: {self.config.evolution_interval_hours}h]"
         )
 
+        # ── Proactive startup notification ────────────────────
+        try:
+            from kernel.openclaw_bridge import get_openclaw
+            get_openclaw().notify_owner(
+                self._msg("activated_title") + "\n" +
+                self._msg("activated_body",
+                          hustle=self.config.hustle_interval_hours,
+                          evolve=self.config.evolution_interval_hours)
+            )
+        except Exception:
+            pass
+
         try:
             while self.is_running:
                 await self._tick()
@@ -214,11 +226,42 @@ class AgencyHeartbeat:
             self.last_evolution = time.time()
             self._save_timestamp("last_evolution", self.last_evolution)
 
-        # 3. Process missions in parallel (one per studio, concurrent execution)
+        # 3. Autonomy: discover and execute tasks proactively
+        await self._run_autonomy_cycle()
+
+        # 4. Process missions in parallel (one per studio, concurrent execution)
         await self._run_mission_cycle()
 
-        # 4. Execute dynamic scheduled tasks (from API)
+        # 5. Execute dynamic scheduled tasks (from API)
         await self._run_scheduled_tasks()
+
+    async def _run_autonomy_cycle(self) -> None:
+        """Run autonomy engine every tick — discover and execute proactive tasks."""
+        try:
+            from kernel.autonomy_engine import AutonomyEngine
+            if not hasattr(self, "_autonomy_engine"):
+                self._autonomy_engine = AutonomyEngine()
+            
+            result = self._autonomy_engine.run_cycle(max_tasks=2)
+            
+            discovered = result.get("discovered", 0)
+            executed = result.get("executed", 0)
+            
+            if discovered > 0 or executed > 0:
+                logger.info(
+                    "Autonomy cycle: discovered %d, executed %d tasks",
+                    discovered, executed,
+                )
+                if executed > 0:
+                    try:
+                        from kernel.openclaw_bridge import get_openclaw
+                        get_openclaw().notify_owner(
+                            f"🤖 Autonomy: executed {executed} proactive tasks"
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("Autonomy cycle skipped: %s", e)
             
     async def _run_hustle_cycle(self) -> None:
         logger.info("Heartbeat: Triggering Hustle Cycle...")
