@@ -386,11 +386,20 @@ class OpenClawBridge:
 
     # ── Proactive Messaging (Agency → Owner) ─────────────────
 
+    @staticmethod
+    def _escape_html(text: str) -> str:
+        """Escape HTML special chars for Telegram HTML parse_mode."""
+        return (
+            text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
     def send_telegram(
         self,
         message: str,
         chat_id: str = "",
-        parse_mode: str = "Markdown",
+        parse_mode: str = "HTML",
     ) -> bool:
         """
         Send a proactive message to the owner via Telegram Bot API.
@@ -561,22 +570,23 @@ class OpenClawBridge:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
-        # Human-readable message (i18n)
+        # Human-readable message (i18n) — uses HTML for Telegram
         _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
+        esc = self._escape_html
         msg_lines = [
-            f"{icon} **Misión #{mission_id} {'Completada' if success else 'Falló'}**" if _es
-            else f"{icon} **Mission #{mission_id} {'Complete' if success else 'Failed'}**",
-            f"📋 {name}",
-            f"🏢 Studio: {studio.upper()}" if studio else "",
+            f"{icon} <b>Misión #{mission_id} {'Completada' if success else 'Falló'}</b>" if _es
+            else f"{icon} <b>Mission #{mission_id} {'Complete' if success else 'Failed'}</b>",
+            f"📋 {esc(name)}",
+            f"🏢 Studio: {esc(studio.upper())}" if studio else "",
         ]
         if success:
             msg_lines.append(f"⏱️ {'Duración' if _es else 'Duration'}: {duration_ms:.0f}ms")
             if artifacts:
                 msg_lines.append(f"📦 {len(artifacts)} {'archivo(s) generado(s)' if _es else 'file(s) generated'}")
             if output_summary:
-                msg_lines.append(f"\n📄 {'Resultado' if _es else 'Output'}:\n{output_summary[:500]}")
+                msg_lines.append(f"\n📄 <b>{'Resultado' if _es else 'Output'}:</b>\n{esc(output_summary[:3000])}")
         else:
-            msg_lines.append(f"💥 Error: {error[:300]}")
+            msg_lines.append(f"💥 Error: {esc(error[:500])}")
 
         message = "\n".join(line for line in msg_lines if line)
 

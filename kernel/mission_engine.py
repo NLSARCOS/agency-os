@@ -345,8 +345,8 @@ class MissionEngine:
             for step_id, step_data in result.get("steps", {}).items():
                 content = step_data.get("content", "")
                 if content:
-                    output_parts.append(f"[{step_id}] {content[:300]}")
-            output_summary = "\n".join(output_parts)[:2000]
+                    output_parts.append(f"[{step_id}] {content[:1000]}")
+            output_summary = "\n".join(output_parts)[:3500]
 
             oc.report_mission_result(
                 mission_id=mission_id,
