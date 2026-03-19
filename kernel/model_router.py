@@ -349,19 +349,24 @@ class ModelRouter:
     def _call_openclaw(
         self, model: str, prompt: str, system: str, start: float
     ) -> ModelResponse:
-        """Call a model through OpenClaw CLI (supports OAuth models like Codex, GPT-5.4)."""
+        """Call a model through OpenClaw CLI (gateway handles model selection)."""
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
             result = subprocess.run(
-                ["openclaw", "agent", "--json", "--model", model, "--message", full_prompt],
+                ["openclaw", "agent", "--json", "--message", full_prompt],
                 capture_output=True, text=True, timeout=120,
             )
+            latency = (time.monotonic() - start) * 1000
+
             if result.returncode != 0:
                 raise RuntimeError(f"openclaw agent failed: {result.stderr[:200]}")
 
-            data = json_lib.loads(result.stdout)
-            content = data.get("response", data.get("content", data.get("message", "")))
-            latency = (time.monotonic() - start) * 1000
+            # Try JSON first, fallback to raw text
+            try:
+                data = json_lib.loads(result.stdout)
+                content = data.get("response", data.get("content", data.get("message", "")))
+            except json_lib.JSONDecodeError:
+                content = result.stdout.strip()
 
             return ModelResponse(
                 content=content,
@@ -371,8 +376,6 @@ class ModelRouter:
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"openclaw agent timed out for model {model}")
-        except json_lib.JSONDecodeError:
-            raise RuntimeError(f"openclaw agent returned invalid JSON for model {model}")
 
     def _update_health(self, model: str, success: bool, error: str = "") -> None:
         if model not in self.health:
