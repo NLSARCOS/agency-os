@@ -87,8 +87,8 @@ class AgencyHeartbeat:
             "hustle_title": "💼 Hustle Cycle Complete",
             "hustle_body": (
                 "I proactively searched for business and found "
-                "**{count}** new opportunities awaiting your approval.\n\n"
-                "Use `agency pipeline` or the Initiative Engine to review."
+                "<b>{count}</b> new opportunities awaiting your approval.\n\n"
+                "Use agency pipeline or the Initiative Engine to review."
             ),
         },
         "es": {
@@ -102,8 +102,8 @@ class AgencyHeartbeat:
             "hustle_title": "💼 Ciclo de Búsqueda Completado",
             "hustle_body": (
                 "Busqué proactivamente oportunidades de negocio y encontré "
-                "**{count}** nuevas esperando tu aprobación.\n\n"
-                "Usa `agency pipeline` o el Motor de Iniciativa para revisarlas."
+                "<b>{count}</b> nuevas esperando tu aprobación.\n\n"
+                "Usa agency pipeline o el Motor de Iniciativa para revisarlas."
             ),
         },
     }
