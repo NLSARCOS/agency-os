@@ -341,7 +341,7 @@ class OpenClawBridge:
         """
         import subprocess
         
-        cmd = ["openclaw", "agent", "--json", "--message", prompt]
+        cmd = ["openclaw", "agent", "--agent", self._config.default_agent, "--json", "--message", prompt]
         
         start = time.monotonic()
         result = subprocess.run(
