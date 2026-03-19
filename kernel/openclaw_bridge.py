@@ -29,7 +29,7 @@ class OpenClawConfig:
     """OpenClaw connection configuration."""
     gateway_url: str = "http://localhost:3000"
     api_key: str = ""
-    default_agent: str = "agency-os"
+    default_agent: str = "main"
     timeout: float = 120.0
     max_retries: int = 2
 

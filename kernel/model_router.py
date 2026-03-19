@@ -353,7 +353,7 @@ class ModelRouter:
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
             result = subprocess.run(
-                ["openclaw", "agent", "--agent", "agency-os", "--json", "--message", full_prompt],
+                ["openclaw", "agent", "--agent", "main", "--json", "--message", full_prompt],
                 capture_output=True, text=True, timeout=120,
             )
             latency = (time.monotonic() - start) * 1000
