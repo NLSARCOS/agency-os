@@ -238,6 +238,9 @@ class AgencyHeartbeat:
         # 5. Execute dynamic scheduled tasks (from API)
         await self._run_scheduled_tasks()
 
+        # 6. Check OAuth tokens and auto-refresh if near expiry
+        self._check_token_refresh()
+
     async def _run_autonomy_cycle(self) -> None:
         """Run autonomy engine every tick — discover and execute proactive tasks."""
         try:
@@ -517,6 +520,28 @@ class AgencyHeartbeat:
 
         except Exception as e:
             logger.debug("Scheduled tasks check skipped: %s", e)
+
+    def _check_token_refresh(self) -> None:
+        """Check OAuth tokens and auto-refresh if near expiry (every 30 min)."""
+        now = time.time()
+        if not hasattr(self, "_last_token_check"):
+            self._last_token_check = 0.0
+
+        # Only check every 30 minutes
+        if now - self._last_token_check < 1800:
+            return
+
+        self._last_token_check = now
+        try:
+            from kernel.token_refresher import check_and_refresh
+            result = check_and_refresh()
+            if result.get("refreshed", 0) > 0:
+                logger.info("Token refresh: %s", result)
+            elif result.get("failed", 0) > 0:
+                logger.warning("Token refresh failures: %s", result)
+        except Exception as e:
+            logger.debug("Token refresh check skipped: %s", e)
+
 _heartbeat: AgencyHeartbeat | None = None
 
 
