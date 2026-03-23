@@ -353,23 +353,20 @@ class ModelRouter:
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
             import os
-            try:
-                from kernel.config import get_config
-                cfg = get_config()
-                cfg_token = cfg.get("gateway", {}).get("auth", {}).get("token", "")
-            except ImportError:
-                cfg_token = ""
-            
             env = os.environ.copy()
             
-            # The token is either explicitly in config or in OPENCLAW_API_KEY
-            token = cfg_token or os.environ.get("OPENCLAW_API_KEY", "")
+            # The token is read directly from the environment (.env)
+            token = os.environ.get("OPENCLAW_API_KEY", "")
             if token:
                 env["OPENCLAW_AUTH_TOKEN"] = token
 
+            cmd = ["openclaw", "agent", "--agent", "main", "--json"]
+            if model and model != "openclaw":
+                cmd.extend(["--model", model])
+            cmd.extend(["--message", full_prompt])
+
             result = subprocess.run(
-                ["openclaw", "agent", "--agent", "main", "--json", "--message", full_prompt],
-                capture_output=True, text=True, timeout=120, env=env
+                cmd, capture_output=True, text=True, timeout=120, env=env
             )
             latency = (time.monotonic() - start) * 1000
 
