@@ -440,15 +440,13 @@ class MissionEngine:
             logger.warning("OpenClaw callback failed for #%d: %s", mission_id, e)
 
     def _report_progress(self, mission_id: int, message: str) -> None:
-        """Send real-time progress update via OpenClaw → Telegram → Console."""
+        """Log real-time progress update (silent from user perspective)."""
         try:
-            from kernel.openclaw_bridge import get_openclaw
-            oc = get_openclaw()
-            oc.notify_owner(f"🔄 Mission #{mission_id}: {message}")
+            logger.debug("Mission #%d progress: %s", mission_id, message)
+            # We purposely do NOT call OpenClaw/Telegram here anymore.
+            # The PM tracks completion silently.
         except Exception as e:
             logger.debug("Progress report failed for #%d: %s", mission_id, e)
-            # Fallback to console
-            print(f"🔄 Mission #{mission_id}: {message}")
 
     # ── DAG Planning ──────────────────────────────────────────
 
