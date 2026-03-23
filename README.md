@@ -86,20 +86,37 @@ wait
 agency report
 ```
 
-## Integración con OpenClaw
+## Integración con OpenClaw (Project Manager)
 
-Agency OS se integra **bidireccionalmente** con OpenClaw:
+Agency OS se integra **bidireccionalmente** con OpenClaw, quien actúa como tu **Project Manager** personal:
 
 | Dirección | Cómo funciona |
 |---|---|
-| **Tú → Agencia** | Escribes al bot de Telegram → OpenClaw ejecuta comandos de Agency OS |
-| **Agencia → Tú** | Heartbeat encuentra oportunidades → te notifica por Telegram |
+| **Tú → Agencia** | Escribes al bot de Telegram → OpenClaw planifica y delega tareas a Agency OS vía **MCP Server**. |
+| **Agencia → Tú** | El `heartbeat.py` finaliza el trabajo → Te notifica los entregables por Telegram a través del Gateway. |
 
 La agencia solo te escribe cuando:
-- ✅ Encuentra oportunidades de negocio
-- ✅ Completa tareas importantes
+- ✅ Completa misiones
 - ✅ Necesita tu autorización
-- ❌ Nunca spam de "estoy activa"
+- ❌ Nunca te hace spam de "estoy activa"
+
+### Soporte MCP Nativo 🔌
+Agency OS expone un servidor **Model Context Protocol (MCP)** en `kernel/mcp_server.py`. 
+Para conectar Agency OS a OpenClaw, Cursor, o Claude Desktop, simplemente apunta tu configuración al servidor MCP:
+```json
+"mcpServers": {
+  "agency-os": {
+    "command": "/path/to/agency-os/.venv/bin/python",
+    "args": ["/path/to/agency-os/kernel/mcp_server.py"]
+  }
+}
+```
+
+### 🧩 Cómo crear tu propio "Studio" (Departamento)
+¡Agency OS es modular! Si quieres añadir un departamento de "Recursos Humanos" o "Legal", solo tienes que:
+1. Crear una carpeta en `studios/rh/`.
+2. Crear un archivo `pipeline.py` dentro copiando la plantilla de otro departamento.
+3. Agency OS auto-descubrirá tu nuevo Studio al iniciar.
 
 ## Modelos de IA
 

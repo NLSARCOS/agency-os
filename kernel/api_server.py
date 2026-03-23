@@ -245,6 +245,7 @@ def create_app() -> Any:
         # Check for artifacts and the exact output json
         from pathlib import Path
         import json
+        from kernel.config import get_config
         cfg = get_config()
         artifact_dir = cfg.root / "data" / "outputs" / f"mission_{mission_id}"
         artifacts = []

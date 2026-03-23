@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BASE="/home/nelson/.openclaw/workspace"
-OS="$BASE/agency-os"
+OS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BASE="$(dirname "$OS")"
 RAW="$BASE/leads/medical_leads_ecuador.csv"
 CLEAN="$BASE/leads/medical_leads_no_duplicates.csv"
 TOP="$BASE/leads/medical_leads_top_priority.csv"

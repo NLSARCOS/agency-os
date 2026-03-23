@@ -1,11 +1,14 @@
 # Cron plan — Agency OS
 
+Este es un ejemplo de cómo configurar el sistema operativo de tu Agencia en tu crontab (`crontab -e`). Deberás reemplazar `/path/to/agency-os` por la ruta real donde clonaste el repositorio.
+
 ## Activos
 ```cron
-*/40 * * * * /home/nelson/.openclaw/workspace/leads/medical_runner.sh
-*/20 * * * * /home/nelson/.openclaw/workspace/agency-v1/scripts/agency_master_cycle.sh
-15 */2 * * * python3 /home/nelson/.openclaw/workspace/agency-v1/pipelines/autonomy_orchestrator.py >> /home/nelson/.openclaw/workspace/agency-v1/reports/autonomy.log 2>&1
-0 */4 * * * /home/nelson/.openclaw/workspace/agency-os/jobs/agency_report_4h.sh >> /home/nelson/.openclaw/workspace/agency-os/reports/agency_report_4h.log 2>&1
+# Ejemplo de ciclos principales
+*/40 * * * * /path/to/agency-os/leads/medical_runner.sh
+*/20 * * * * /path/to/agency-os/jobs/agency_master_cycle.sh
+15 */2 * * * python3 /path/to/agency-os/pipelines/autonomy_orchestrator.py >> /path/to/agency-os/reports/autonomy.log 2>&1
+0 */4 * * * /path/to/agency-os/jobs/agency_report_4h.sh >> /path/to/agency-os/reports/agency_report_4h.log 2>&1
 ```
 
 ## Nota
