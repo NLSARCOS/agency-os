@@ -541,110 +541,89 @@ class OpenClawBridge:
         error: str = "",
     ) -> bool:
         """
-        Report a mission result back to OpenClaw.
+        Project Manager: receive team reports and decide what to tell the boss.
 
-        This is the KEY feedback mechanism:
-        - OpenClaw sends task → Agency OS executes → THIS reports back
-        - OpenClaw can then inform the user and trigger follow-up actions
+        Teams report every task completion here. The PM:
+        1. Tracks it on the internal board
+        2. Decides if the user needs to know
+        3. Only notifies on: objective complete, critical failure
 
-        Sends via:
-        1. OpenClaw /v1/messages (structured, preferred)
-        2. Telegram (fallback)
+        Routine completions are SILENT — the PM just checks them off.
         """
         success = status in ("done", "completed")
-        icon = "✅" if success else "❌"
 
-        # Build structured result
-        result_payload = {
-            "type": "mission_result",
-            "source": "agency-os",
-            "mission_id": mission_id,
-            "name": name,
-            "status": status,
-            "studio": studio,
-            "success": success,
-            "output_summary": output_summary[:300],
-            "artifacts": artifacts or [],
-            "duration_ms": round(duration_ms, 1),
-            "error": error[:150],
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-
-        # Human-readable message (i18n) — compact for Telegram
-        _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
-        esc = self._escape_html
-        msg_lines = [
-            f"{icon} <b>#{mission_id} | {esc(studio.upper())}</b>",
-            f"{esc(name[:60])}",
-        ]
-        if success:
-            msg_lines.append(f"⏱️ {duration_ms:.0f}ms")
-            if artifacts:
-                msg_lines.append(f"📦 {len(artifacts)} {'archivos' if _es else 'files'}")
-            if output_summary:
-                # Compact: first 300 chars only
-                short = output_summary[:300].replace('\n', ' ').strip()
-                if len(output_summary) > 300:
-                    short += "…"
-                msg_lines.append(f"📄 {esc(short)}")
-        else:
-            msg_lines.append(f"💥 {esc(error[:150])}")
-
-        message = "\n".join(line for line in msg_lines if line)
-
-        # Try OpenClaw structured endpoint with retry + exponential backoff
-        def _try_send_to_openclaw() -> bool:
-            """Send result to OpenClaw with up to 3 retries."""
-            import time as _time
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    if not self.is_available():
-                        break
-                    headers = {"Content-Type": "application/json"}
-                    if self._config.api_key:
-                        headers["Authorization"] = f"Bearer {self._config.api_key}"
-
-                    resp = self._client.post(
-                        f"{self._config.gateway_url}/v1/messages",
-                        headers=headers,
-                        json=result_payload,
-                        timeout=10,
-                    )
-                    if resp.status_code in (200, 201):
-                        logger.info(
-                            "Mission #%d result reported to OpenClaw (attempt %d)",
-                            mission_id,
-                            attempt + 1,
-                        )
-                        return True
-                    logger.debug(
-                        "OpenClaw callback attempt %d/%d failed: %s",
-                        attempt + 1,
-                        max_retries,
-                        resp.status_code,
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "OpenClaw callback attempt %d/%d error: %s",
-                        attempt + 1,
-                        max_retries,
-                        e,
-                    )
-                if attempt < max_retries - 1:
-                    _time.sleep(2 ** (attempt + 1))  # 2s, 4s backoff
-            return False
-
-        # Try OpenClaw first (non-blocking via thread for retries)
-        import threading
-        def _callback_with_fallback():
-            if not _try_send_to_openclaw():
-                self.notify_owner(message)
-
-        thread = threading.Thread(
-            target=_callback_with_fallback, daemon=True, name="callback-retry"
+        # ── 1. Track on board (log) ──────────────────────────
+        logger.info(
+            "PM received: #%d [%s] %s → %s (%dms)",
+            mission_id, studio, name[:50], status, duration_ms,
         )
-        thread.start()
+
+        # ── 2. Decision: should the user know? ───────────────
+        # Check if this mission is part of an objective
+        from kernel.state_manager import get_state
+        state = get_state()
+        mission = state.get_mission(mission_id)
+        meta = {}
+        if mission and mission.get("metadata"):
+            try:
+                meta = json.loads(mission["metadata"]) if isinstance(mission["metadata"], str) else mission["metadata"]
+            except Exception:
+                meta = {}
+
+        objective_id = meta.get("objective_id")
+
+        if objective_id:
+            # Part of an objective — check if ALL sub-missions are done
+            all_missions = state._conn.execute(
+                """SELECT id, name, status, studio FROM missions 
+                   WHERE metadata LIKE ?""",
+                (f'%"objective_id": "{objective_id}"%',),
+            ).fetchall()
+
+            total = len(all_missions)
+            done = sum(1 for m in all_missions if m["status"] in ("done", "failed"))
+
+            if done < total:
+                # Not all done — stay silent, PM just notes it
+                logger.info(
+                    "PM: objective %s progress %d/%d — waiting",
+                    objective_id[:8], done, total,
+                )
+                return True
+
+            # ALL done — PM sends consolidated report to user
+            succeeded = sum(1 for m in all_missions if m["status"] == "done")
+            failed = total - succeeded
+            objective_text = meta.get("objective", "?")[:80]
+            _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
+
+            lines = []
+            for m in all_missions:
+                icon = "✅" if m["status"] == "done" else "❌"
+                short = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:40]
+                lines.append(f"  {icon} [{m['studio'].upper()}] {short}")
+
+            if failed == 0:
+                header = f"✅ {'Objetivo completado' if _es else 'Objective complete'}"
+            else:
+                header = f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
+
+            msg = f"{header}\n📋 {objective_text}\n{chr(10).join(lines)}"
+            self.notify_owner(msg)
+            return True
+
+        # ── 3. Standalone task → only notify on failure ──────
+        if not success:
+            _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
+            short_name = name[:50]
+            short_error = error[:120] if error else "?"
+            msg = (
+                f"❌ {'Falló' if _es else 'Failed'}: {short_name}\n"
+                f"[{studio.upper()}] {short_error}"
+            )
+            self.notify_owner(msg)
+        # Success? Silent — PM just checked it off.
+
         return True
 
     def report_objective_complete(

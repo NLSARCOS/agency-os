@@ -243,10 +243,9 @@ class MissionEngine:
         finally:
             self._running_missions.discard(mission_id)
 
-        # ── Result Delivery (silent — orchestrator handles notifications) ──
+        # ── Report to PM (OpenClaw) silently — PM decides notifications ──
         self._save_output(mission_id, name, studio, result)
-        # No direct Telegram/OpenClaw notification here.
-        # The heartbeat orchestrator collects results and sends ONE digest.
+        self._callback_openclaw(mission_id, name, studio, result)
 
         # Log KPIs
         self.state.log_kpi(

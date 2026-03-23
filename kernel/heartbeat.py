@@ -408,7 +408,7 @@ class AgencyHeartbeat:
         """Process queued missions — one per studio in parallel.
         
         The orchestrator handles ALL awareness. Individual missions are silent.
-        After processing, the orchestrator sends ONE digest notification.
+        OpenClaw PM receives reports and decides when to notify.
         """
         try:
             if not hasattr(self, "_mission_engine"):
@@ -427,68 +427,8 @@ class AgencyHeartbeat:
                     "Mission cycle: %d studios, %d succeeded, %d failed",
                     studios, succeeded, failed,
                 )
-
-                # ── Orchestrator Digest ──────────────────────────
-                # Query missions completed in the last 5 minutes (this cycle)
-                if succeeded > 0 or failed > 0:
-                    self._send_orchestrator_digest()
-
         except Exception as e:
             logger.error("Mission cycle failed: %s", e, exc_info=True)
-
-    def _send_orchestrator_digest(self) -> None:
-        """Send ONE orchestrator digest of recently completed missions."""
-        try:
-            from kernel.state_manager import get_state
-            state = get_state()
-
-            recent = state._conn.execute("""
-                SELECT id, name, studio, status, completed_at
-                FROM missions 
-                WHERE completed_at > datetime('now', '-5 minutes')
-                AND status IN ('done', 'failed')
-                ORDER BY completed_at DESC
-            """).fetchall()
-
-            if not recent:
-                return
-
-            done = [m for m in recent if m["status"] == "done"]
-            failed = [m for m in recent if m["status"] == "failed"]
-            studios = list(set(m["studio"] for m in recent))
-
-            import os
-            _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
-
-            lines = []
-            for m in recent:
-                icon = "✅" if m["status"] == "done" else "❌"
-                short = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:45]
-                lines.append(f"  {icon} [{m['studio'].upper()}] {short}")
-
-            summary = "\n".join(lines)
-
-            if not failed:
-                title = f"📊 {'Reporte' if _es else 'Report'}: {len(done)} {'completadas' if _es else 'done'}"
-            else:
-                title = (
-                    f"📊 {'Reporte' if _es else 'Report'}: "
-                    f"{len(done)}✅ {len(failed)}❌"
-                )
-
-            message = (
-                f"{len(studios)} studio{'s' if len(studios) > 1 else ''}\n\n"
-                f"{summary}"
-            )
-
-            try:
-                from kernel.openclaw_bridge import get_openclaw
-                get_openclaw().notify_owner(f"{title}\n{message}")
-            except Exception:
-                pass
-
-        except Exception as e:
-            logger.debug("Orchestrator digest error: %s", e)
 
     def _sweep_stuck_missions(self) -> None:
         """Mark missions stuck as active/running for too long as failed."""
