@@ -541,25 +541,51 @@ class OpenClawBridge:
         error: str = "",
     ) -> bool:
         """
-        Project Manager: receive team reports and decide what to tell the boss.
+        Project Manager: receive team reports and update context.
 
-        Teams report every task completion here. The PM:
-        1. Tracks it on the internal board
-        2. Decides if the user needs to know
-        3. Only notifies on: objective complete, critical failure
-
-        Routine completions are SILENT — the PM just checks them off.
+        1. Always POST structured result to OpenClaw gateway APIs (so the LLM remembers).
+        2. PM decides what to push to the user's Telegram.
         """
         success = status in ("done", "completed")
 
-        # ── 1. Track on board (log) ──────────────────────────
+        # ── 1. Update OpenClaw Gateway Context (Silent API Call) ──
+        result_payload = {
+            "type": "mission_result",
+            "source": "agency-os",
+            "mission_id": mission_id,
+            "name": name,
+            "status": status,
+            "studio": studio,
+            "success": success,
+            "output_summary": output_summary[:300],
+            "artifacts": artifacts or [],
+            "duration_ms": round(duration_ms, 1),
+            "error": error[:150],
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
+        def _send_to_gateway():
+            import time as _time
+            for attempt in range(3):
+                try:
+                    if not self.is_available(): break
+                    headers = {"Content-Type": "application/json"}
+                    if self._config.api_key: headers["Authorization"] = f"Bearer {self._config.api_key}"
+                    r = self._client.post(f"{self._config.gateway_url}/v1/messages", headers=headers, json=result_payload, timeout=5)
+                    if r.status_code in (200, 201): return
+                except Exception: pass
+                _time.sleep(1)
+
+        import threading
+        threading.Thread(target=_send_to_gateway, daemon=True).start()
+
+        # ── 2. Track on internal PM board (log) ────────────────
         logger.info(
             "PM received: #%d [%s] %s → %s (%dms)",
             mission_id, studio, name[:50], status, duration_ms,
         )
 
-        # ── 2. Decision: should the user know? ───────────────
-        # Check if this mission is part of an objective
+        # ── 3. Decision: should the user be interrupted? ───────
         from kernel.state_manager import get_state
         state = get_state()
         mission = state.get_mission(mission_id)
@@ -573,7 +599,7 @@ class OpenClawBridge:
         objective_id = meta.get("objective_id")
 
         if objective_id:
-            # Part of an objective — check if ALL sub-missions are done
+            # Objective: wait for all sub-missions
             all_missions = state._conn.execute(
                 """SELECT id, name, status, studio FROM missions 
                    WHERE metadata LIKE ?""",
@@ -584,14 +610,9 @@ class OpenClawBridge:
             done = sum(1 for m in all_missions if m["status"] in ("done", "failed"))
 
             if done < total:
-                # Not all done — stay silent, PM just notes it
-                logger.info(
-                    "PM: objective %s progress %d/%d — waiting",
-                    objective_id[:8], done, total,
-                )
+                logger.info("PM: objective %s progress %d/%d — waiting", objective_id[:8], done, total)
                 return True
 
-            # ALL done — PM sends consolidated report to user
             succeeded = sum(1 for m in all_missions if m["status"] == "done")
             failed = total - succeeded
             objective_text = meta.get("objective", "?")[:80]
@@ -603,27 +624,15 @@ class OpenClawBridge:
                 short = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:40]
                 lines.append(f"  {icon} [{m['studio'].upper()}] {short}")
 
-            if failed == 0:
-                header = f"✅ {'Objetivo completado' if _es else 'Objective complete'}"
-            else:
-                header = f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
-
-            msg = f"{header}\n📋 {objective_text}\n{chr(10).join(lines)}"
-            self.notify_owner(msg)
+            header = f"✅ {'Objetivo completado' if _es else 'Objective complete'}" if failed == 0 else f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
+            self.notify_owner(f"{header}\n📋 {objective_text}\n{chr(10).join(lines)}")
             return True
 
-        # ── 3. Standalone task → only notify on failure ──────
+        # Standalone task: only notify on failure
         if not success:
             _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
-            short_name = name[:50]
-            short_error = error[:120] if error else "?"
-            msg = (
-                f"❌ {'Falló' if _es else 'Failed'}: {short_name}\n"
-                f"[{studio.upper()}] {short_error}"
-            )
-            self.notify_owner(msg)
-        # Success? Silent — PM just checked it off.
-
+            self.notify_owner(f"❌ {'Falló' if _es else 'Failed'}: {name[:50]}\n[{studio.upper()}] {error[:120] if error else '?'}")
+            
         return True
 
     def report_objective_complete(
