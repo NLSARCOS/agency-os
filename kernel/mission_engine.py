@@ -797,25 +797,11 @@ class MissionEngine:
             len(promoted), ", ".join(studios_active),
         )
 
-        # ── Progress Notification ────────────────────────────
-        try:
-            from kernel.notifier import Notifier, NotificationPriority
-            notifier = Notifier()
-            mission_list = "\n".join(
-                f"  • {m['studio'].upper()}: {m['name']}" for m in promoted
-            )
-            _es = self.cfg.language == "es"
-            notifier.notify(
-                title="🚀 Studios Trabajando" if _es else "🚀 Studios Working",
-                message=(
-                    f"{'Iniciando ejecución paralela' if _es else 'Starting parallel execution'}:\n{mission_list}"
-                ),
-                priority=NotificationPriority.LOW,
-                source="mission_engine",
-                category="task",
-            )
-        except Exception:
-            pass  # Non-critical
+        # ── Progress Notification (Silent Log Only) ──────────────
+        mission_list = "\n".join(
+            f"  • {m['studio'].upper()}: {m['name']}" for m in promoted
+        )
+        logger.info("🚀 Studios Working:\n%s", mission_list)
 
         # Execute all missions concurrently (each studio uses its own model)
         loop = asyncio.get_event_loop()
