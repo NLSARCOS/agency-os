@@ -353,13 +353,17 @@ class ModelRouter:
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
             import os
-            from kernel.config_manager import get_config
+            try:
+                from kernel.config import get_config
+                cfg = get_config()
+                cfg_token = cfg.get("gateway", {}).get("auth", {}).get("token", "")
+            except ImportError:
+                cfg_token = ""
             
             env = os.environ.copy()
-            cfg = get_config()
             
             # The token is either explicitly in config or in OPENCLAW_API_KEY
-            token = cfg.get("gateway", {}).get("auth", {}).get("token", "") or os.environ.get("OPENCLAW_API_KEY", "")
+            token = cfg_token or os.environ.get("OPENCLAW_API_KEY", "")
             if token:
                 env["OPENCLAW_AUTH_TOKEN"] = token
 
