@@ -27,3 +27,5 @@ reports/
 __pycache__/
 *.pyc
 *.db
+*.bak
+.env*
