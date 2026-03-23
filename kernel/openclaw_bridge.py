@@ -563,10 +563,10 @@ class OpenClawBridge:
             "status": status,
             "studio": studio,
             "success": success,
-            "output_summary": output_summary[:2000],
+            "output_summary": output_summary[:300],
             "artifacts": artifacts or [],
             "duration_ms": round(duration_ms, 1),
-            "error": error[:500],
+            "error": error[:150],
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 

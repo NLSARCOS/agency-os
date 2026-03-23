@@ -427,13 +427,15 @@ class MissionEngine:
             for step_data in result.get("steps", {}).values():
                 artifacts.extend(step_data.get("artifacts", []))
 
-            # Build output summary from step contents
+            # Build output summary from step contents (compact)
             output_parts = []
             for step_id, step_data in result.get("steps", {}).items():
                 content = step_data.get("content", "")
                 if content:
-                    output_parts.append(f"[{step_id}] {content[:1000]}")
-            output_summary = "\n".join(output_parts)[:3500]
+                    # Strip JSON noise, keep meaningful text
+                    clean = content.replace('\n', ' ').strip()[:200]
+                    output_parts.append(f"[{step_id}] {clean}")
+            output_summary = " | ".join(output_parts)[:300]
 
             oc.report_mission_result(
                 mission_id=mission_id,
