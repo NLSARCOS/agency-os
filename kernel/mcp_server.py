@@ -31,6 +31,28 @@ async def get_active_missions() -> str:
             return f"Error connecting to Agency OS: {e}"
 
 @mcp.tool()
+async def get_recent_missions(limit: int = 5) -> str:
+    """Get the status of recently completed or failed missions. Use this when the user asks 'what did the agency just finish?', 'show me the results of the last task', or 'did my objective complete?'"""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"http://localhost:8080/api/missions/recent?limit={limit}", timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                count = data.get("count", 0)
+                missions = data.get("missions", [])
+                
+                if count == 0:
+                    return "There are no recently finished missions."
+                
+                output = f"The agency recently finished {count} missions:\n"
+                for m in missions:
+                    output += f"- Mission #{m['id']}: {m['name']} (Studio: {m['studio']}, Status: {m['status']}, Completed: {m.get('completed_at')})\n"
+                return output
+            return f"Error: API returned status code {r.status_code}"
+        except Exception as e:
+            return f"Error connecting to Agency OS: {e}"
+
+@mcp.tool()
 async def get_mission_status(mission_id: int) -> str:
     """Get the detailed status of a specific mission by its ID. Use this when the user asks about a specific task ID."""
     async with httpx.AsyncClient() as client:

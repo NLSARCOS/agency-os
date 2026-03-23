@@ -622,7 +622,7 @@ class OpenClawBridge:
             for m in all_missions:
                 icon = "✅" if m["status"] == "done" else "❌"
                 short = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:40]
-                lines.append(f"  {icon} [{m['studio'].upper()}] {short}")
+                lines.append(f"  {icon} [#{m['id']}] [{m['studio'].upper()}] {short}")
 
             header = f"✅ {'Objetivo completado' if _es else 'Objective complete'}" if failed == 0 else f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
             self.notify_owner(f"{header}\n📋 {objective_text}\n{chr(10).join(lines)}")

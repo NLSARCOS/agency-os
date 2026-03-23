@@ -398,6 +398,27 @@ def create_app() -> Any:
         except Exception as e:
             raise HTTPException(500, f"Failed to cancel: {e}")
 
+    @app.get("/api/missions/recent")
+    async def recent_missions(limit: int = 5):
+        """List recently completed or failed missions."""
+        from kernel.state_manager import get_state
+        state = get_state()
+        try:
+            with state._lock:
+                rows = state._conn.execute(
+                    """SELECT id, name, studio, status, priority, created_at, completed_at
+                       FROM missions
+                       WHERE status IN ('done', 'failed')
+                       ORDER BY completed_at DESC, id DESC
+                       LIMIT ?""", (limit,)
+                ).fetchall()
+            return {
+                "count": len(rows),
+                "missions": [dict(r) for r in rows]
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     @app.get("/api/missions/active")
     async def active_missions():
         """List all active (queued/running) missions."""
