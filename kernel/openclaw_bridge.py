@@ -570,23 +570,25 @@ class OpenClawBridge:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
-        # Human-readable message (i18n) — uses HTML for Telegram
+        # Human-readable message (i18n) — compact for Telegram
         _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
         esc = self._escape_html
         msg_lines = [
-            f"{icon} <b>Misión #{mission_id} {'Completada' if success else 'Falló'}</b>" if _es
-            else f"{icon} <b>Mission #{mission_id} {'Complete' if success else 'Failed'}</b>",
-            f"📋 {esc(name)}",
-            f"🏢 Studio: {esc(studio.upper())}" if studio else "",
+            f"{icon} <b>#{mission_id} | {esc(studio.upper())}</b>",
+            f"{esc(name[:60])}",
         ]
         if success:
-            msg_lines.append(f"⏱️ {'Duración' if _es else 'Duration'}: {duration_ms:.0f}ms")
+            msg_lines.append(f"⏱️ {duration_ms:.0f}ms")
             if artifacts:
-                msg_lines.append(f"📦 {len(artifacts)} {'archivo(s) generado(s)' if _es else 'file(s) generated'}")
+                msg_lines.append(f"📦 {len(artifacts)} {'archivos' if _es else 'files'}")
             if output_summary:
-                msg_lines.append(f"\n📄 <b>{'Resultado' if _es else 'Output'}:</b>\n{esc(output_summary[:3000])}")
+                # Compact: first 300 chars only
+                short = output_summary[:300].replace('\n', ' ').strip()
+                if len(output_summary) > 300:
+                    short += "…"
+                msg_lines.append(f"📄 {esc(short)}")
         else:
-            msg_lines.append(f"💥 Error: {esc(error[:500])}")
+            msg_lines.append(f"💥 {esc(error[:150])}")
 
         message = "\n".join(line for line in msg_lines if line)
 

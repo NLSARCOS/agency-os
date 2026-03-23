@@ -273,11 +273,7 @@ class Notifier:
             }
             icon = icons.get(notif.priority, "📢")
 
-            text = (
-                f"{icon} *{notif.title}*\n\n"
-                f"{notif.message}\n\n"
-                f"_Source: {notif.source} | {notif.priority.value}_"
-            )
+            text = f"{icon} *{notif.title}*\n\n{notif.message}"
 
             oc.send_telegram(text)
         except Exception as e:
