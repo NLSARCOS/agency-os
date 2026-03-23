@@ -352,9 +352,20 @@ class ModelRouter:
         """Call a model through OpenClaw CLI (gateway handles model selection)."""
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
+            import os
+            from kernel.config_manager import get_config
+            
+            env = os.environ.copy()
+            cfg = get_config()
+            
+            # The token is either explicitly in config or in OPENCLAW_API_KEY
+            token = cfg.get("gateway", {}).get("auth", {}).get("token", "") or os.environ.get("OPENCLAW_API_KEY", "")
+            if token:
+                env["OPENCLAW_AUTH_TOKEN"] = token
+
             result = subprocess.run(
                 ["openclaw", "agent", "--agent", "main", "--json", "--message", full_prompt],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=120, env=env
             )
             latency = (time.monotonic() - start) * 1000
 
