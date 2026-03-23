@@ -215,6 +215,9 @@ class AgencyHeartbeat:
     async def _tick(self) -> None:
         """The actual logic evaluated every minute."""
         now = time.time()
+
+        # 0. Sweep stuck missions (active/running > 2 hours = dead)
+        self._sweep_stuck_missions()
         
         # 1. Check if it's time to hustle (Find Clients/Opportunities)
         if now - self.last_hustle > (self.config.hustle_interval_hours * 3600):
@@ -409,8 +412,8 @@ class AgencyHeartbeat:
                 self._mission_engine = MissionEngine()
                 self._mission_engine.auto_discover_studios()
 
-            # Clean up stuck missions (running > 30 minutes = likely hung)
-            self._cleanup_stuck_missions()
+
+            # (Stuck mission sweep already runs in step 0 of _tick)
 
             result = await self._mission_engine.run_parallel_cycle()
             if result.get("action") != "idle":
@@ -433,34 +436,42 @@ class AgencyHeartbeat:
         except Exception as e:
             logger.error("Mission cycle failed: %s", e, exc_info=True)
 
-    def _cleanup_stuck_missions(self) -> None:
-        """Mark missions stuck in 'running' for >30min as failed."""
+    def _sweep_stuck_missions(self) -> None:
+        """Mark missions stuck as active/running for too long as failed."""
         try:
             from kernel.state_manager import get_state
             state = get_state()
+
+            # Running > 30 min or Active > 2 hours = dead
             stuck = state._conn.execute(
                 """UPDATE missions 
                    SET status = 'failed', 
-                       completed_at = datetime('now')
-                   WHERE status = 'running' 
-                   AND started_at < datetime('now', '-30 minutes')
-                   RETURNING id, name"""
+                       completed_at = datetime('now'),
+                       result = '{"error": "Timed out — auto-cleaned"}'
+                   WHERE (
+                       (status = 'running' AND created_at < datetime('now', '-30 minutes'))
+                       OR (status = 'active' AND created_at < datetime('now', '-2 hours'))
+                   )
+                   RETURNING id, name, status"""
             ).fetchall()
             if stuck:
                 state._conn.commit()
                 for row in stuck:
                     logger.warning(
-                        "Cleaned stuck mission #%d: %s", row[0], row[1]
+                        "Swept stuck mission #%d (%s): %s", row[0], row[2], row[1]
                     )
                 try:
                     from kernel.openclaw_bridge import get_openclaw
+                    import os
+                    _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
                     get_openclaw().notify_owner(
-                        f"🧹 Cleaned {len(stuck)} stuck missions"
+                        f"🧹 {'Limpiadas' if _es else 'Cleaned'} {len(stuck)} "
+                        f"{'misiones atascadas' if _es else 'stuck missions'}"
                     )
                 except Exception:
                     pass
         except Exception as e:
-            logger.debug("Stuck mission cleanup error: %s", e)
+            logger.debug("Stuck mission sweep error: %s", e)
 
     async def _run_scheduled_tasks(self) -> None:
         """Execute dynamic scheduled tasks from the API-created schedule."""
@@ -488,10 +499,19 @@ class AgencyHeartbeat:
                 studio = task["studio"] or "analytics"
                 priority = task["priority"] or 5
 
+                # DEDUP: skip if an active/queued/running mission already exists for this task
+                existing = state._conn.execute(
+                    """SELECT COUNT(*) as cnt FROM missions
+                       WHERE name LIKE ? AND status IN ('queued', 'active', 'running')""",
+                    (f"%{task_name}%",),
+                ).fetchone()
+                if existing and existing["cnt"] > 0:
+                    logger.debug("Scheduled task '%s' skipped — %d still pending", task_name, existing["cnt"])
+                    continue
+
                 logger.info("Scheduled task due: %s", task_name)
 
                 try:
-                    # Create mission directly via state manager
                     import json
                     mission_id = state.create_mission(
                         name=f"[Scheduled] {task_name}",
@@ -504,7 +524,6 @@ class AgencyHeartbeat:
                         }),
                     )
 
-                    # Update last_run_at
                     state._conn.execute(
                         "UPDATE scheduled_tasks SET last_run_at = datetime('now') WHERE name = ?",
                         (task_name,),
