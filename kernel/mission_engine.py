@@ -243,20 +243,10 @@ class MissionEngine:
         finally:
             self._running_missions.discard(mission_id)
 
-        # ── Result Delivery ──────────────────────────────────
+        # ── Result Delivery (silent — orchestrator handles notifications) ──
         self._save_output(mission_id, name, studio, result)
-        self._notify_completion(mission_id, name, studio, result)
-
-        # OpenClaw callback: only for standalone missions (objectives consolidate)
-        meta_raw = self.state.get_mission(mission_id)
-        _meta = {}
-        if meta_raw and meta_raw.get("metadata"):
-            try:
-                _meta = json.loads(meta_raw["metadata"]) if isinstance(meta_raw["metadata"], str) else meta_raw["metadata"]
-            except Exception:
-                pass
-        if not _meta.get("objective_id"):
-            self._callback_openclaw(mission_id, name, studio, result)
+        # No direct Telegram/OpenClaw notification here.
+        # The heartbeat orchestrator collects results and sends ONE digest.
 
         # Log KPIs
         self.state.log_kpi(
