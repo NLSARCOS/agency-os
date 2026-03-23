@@ -1040,8 +1040,13 @@ class MissionEngine:
 
         for row in rows:
             try:
-                meta = json.loads(row["metadata"]) if row["metadata"] else {}
-            except (json.JSONDecodeError, TypeError):
+                raw = row["metadata"]
+                meta = json.loads(raw) if raw else {}
+                if isinstance(meta, str):
+                    meta = json.loads(meta)
+            except Exception:
+                meta = {}
+            if not isinstance(meta, dict):
                 meta = {}
 
             depends_on = meta.get("depends_on", [])
