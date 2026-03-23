@@ -11,6 +11,7 @@ Example: "Crear una página web que llame personas y venderla"
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -142,7 +143,10 @@ class MissionPlanner:
                     metadata={
                         "planner": "mission_planner",
                         "objective": objective[:200],
+                        "objective_id": hashlib.md5(objective.encode()).hexdigest()[:12],
                         "wave": wave_num,
+                        "total_waves": len(waves),
+                        "total_missions": len(planned),
                         "depends_on": mission.depends_on,
                     },
                 )

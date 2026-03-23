@@ -246,7 +246,17 @@ class MissionEngine:
         # ── Result Delivery ──────────────────────────────────
         self._save_output(mission_id, name, studio, result)
         self._notify_completion(mission_id, name, studio, result)
-        self._callback_openclaw(mission_id, name, studio, result)
+
+        # OpenClaw callback: only for standalone missions (objectives consolidate)
+        meta_raw = self.state.get_mission(mission_id)
+        _meta = {}
+        if meta_raw and meta_raw.get("metadata"):
+            try:
+                _meta = json.loads(meta_raw["metadata"]) if isinstance(meta_raw["metadata"], str) else meta_raw["metadata"]
+            except Exception:
+                pass
+        if not _meta.get("objective_id"):
+            self._callback_openclaw(mission_id, name, studio, result)
 
         # Log KPIs
         self.state.log_kpi(
@@ -289,43 +299,120 @@ class MissionEngine:
     def _notify_completion(
         self, mission_id: int, name: str, studio: str, result: dict
     ) -> None:
-        """Send Telegram/console notification on mission completion."""
+        """Send notification on mission completion — consolidated for objectives."""
         try:
-            from kernel.notifier import get_notifier, NotificationPriority
+            # Check if this mission is part of an objective batch
+            mission = self.state.get_mission(mission_id)
+            meta = {}
+            if mission and mission.get("metadata"):
+                try:
+                    meta = json.loads(mission["metadata"]) if isinstance(mission["metadata"], str) else mission["metadata"]
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
 
-            notifier = get_notifier()
-            success = result.get("success", False)
+            objective_id = meta.get("objective_id")
 
-            if success:
-                duration = result.get("duration_ms", 0)
-                _es = self.cfg.language == "es"
-                notifier.notify(
-                    title=f"✅ Misión #{mission_id} Completada" if _es else f"✅ Mission #{mission_id} Complete",
-                    message=(
-                        f"**[{studio.upper()}]** {name}\n"
-                        f"⏱ {duration:.0f}ms | "
-                        f"{'Modelo' if _es else 'Model'}: {result.get('model', 'N/A')}"
-                    ),
-                    priority=NotificationPriority.NORMAL,
-                    source="mission_engine",
-                    category="task",
-                    data={"mission_id": mission_id, "studio": studio},
-                )
+            if objective_id:
+                # Part of a batch — check if ALL missions in this objective are done
+                all_missions = self.state._conn.execute(
+                    """SELECT id, name, status, studio, result, metadata
+                       FROM missions WHERE metadata LIKE ?""",
+                    (f'%"objective_id": "{objective_id}"%',),
+                ).fetchall()
+
+                total = len(all_missions)
+                done = sum(1 for m in all_missions if m["status"] in ("done", "failed"))
+
+                if done < total:
+                    # Not all done yet — stay silent, just log
+                    logger.info(
+                        "Mission #%d done (%d/%d for objective %s) — waiting for batch",
+                        mission_id, done, total, objective_id[:8],
+                    )
+                    return
+
+                # ALL done — send ONE consolidated notification
+                self._notify_objective_complete(objective_id, meta, all_missions)
             else:
-                _es = self.cfg.language == "es"
-                notifier.notify(
-                    title=f"❌ Misión #{mission_id} Falló" if _es else f"❌ Mission #{mission_id} Failed",
-                    message=(
-                        f"**[{studio.upper()}]** {name}\n"
-                        f"{'Error' if _es else 'Error'}: {result.get('error', 'Desconocido' if _es else 'Unknown')[:200]}"
-                    ),
-                    priority=NotificationPriority.HIGH,
-                    source="mission_engine",
-                    category="error",
-                    data={"mission_id": mission_id, "studio": studio},
-                )
+                # Standalone mission — notify immediately (compact)
+                self._notify_single_mission(mission_id, name, studio, result)
+
         except Exception as e:
-            logger.error("Failed to notify for mission #%d: %s", mission_id, e)
+            logger.error("Notification for mission #%d failed: %s", mission_id, e)
+
+    def _notify_single_mission(
+        self, mission_id: int, name: str, studio: str, result: dict
+    ) -> None:
+        """Compact notification for a single standalone mission."""
+        from kernel.notifier import get_notifier, NotificationPriority
+        notifier = get_notifier()
+        _es = self.cfg.language == "es"
+        success = result.get("success", False)
+
+        if success:
+            notifier.notify(
+                title=f"✅ #{mission_id} | {studio.upper()}",
+                message=f"{name[:60]}\n⏱ {result.get('duration_ms', 0):.0f}ms",
+                priority=NotificationPriority.NORMAL,
+                source="mission_engine", category="task",
+                data={"mission_id": mission_id, "studio": studio},
+            )
+        else:
+            notifier.notify(
+                title=f"❌ #{mission_id} | {studio.upper()}",
+                message=f"{name[:60]}\n{result.get('error', '?')[:100]}",
+                priority=NotificationPriority.HIGH,
+                source="mission_engine", category="error",
+                data={"mission_id": mission_id, "studio": studio},
+            )
+
+    def _notify_objective_complete(
+        self, objective_id: str, meta: dict, all_missions: list
+    ) -> None:
+        """Send ONE consolidated notification for a completed objective."""
+        from kernel.notifier import get_notifier, NotificationPriority
+        notifier = get_notifier()
+        _es = self.cfg.language == "es"
+
+        objective = meta.get("objective", "?")[:80]
+        total = len(all_missions)
+        succeeded = sum(1 for m in all_missions if m["status"] == "done")
+        failed = total - succeeded
+        studios = list(set(m["studio"] for m in all_missions))
+
+        # Build per-studio summary
+        lines = []
+        for m in all_missions:
+            status_icon = "✅" if m["status"] == "done" else "❌"
+            short_name = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:40]
+            lines.append(f"  {status_icon} [{m['studio'].upper()}] {short_name}")
+
+        summary = "\n".join(lines)
+
+        if failed == 0:
+            title = f"✅ {'Objetivo completado' if _es else 'Objective complete'}"
+        else:
+            title = f"⚠️ {'Objetivo parcial' if _es else 'Partial objective'}"
+
+        message = (
+            f"**{objective}**\n"
+            f"📊 {succeeded}/{total} {'misiones' if _es else 'missions'} | "
+            f"{len(studios)} studios\n\n"
+            f"{summary}"
+        )
+
+        notifier.notify(
+            title=title,
+            message=message,
+            priority=NotificationPriority.NORMAL,
+            source="mission_engine", category="objective",
+            data={"objective_id": objective_id, "total": total, "succeeded": succeeded},
+        )
+
+        logger.info(
+            "Objective %s complete: %d/%d succeeded across %s",
+            objective_id[:8], succeeded, total, studios,
+        )
 
     def _callback_openclaw(
         self, mission_id: int, name: str, studio: str, result: dict
