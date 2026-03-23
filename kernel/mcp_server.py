@@ -70,6 +70,8 @@ async def get_mission_status(mission_id: int) -> str:
                     f"Created: {m.get('created_at')}\n"
                     f"Completed: {m.get('completed_at', 'N/A')}\n"
                 )
+                if m.get('result'):
+                    output += f"\n--- DELIVERABLE RESULT ---\n{m['result']}\n--------------------------\n"
                 if m.get('artifacts'):
                     output += f"Artifacts produced: {', '.join(m['artifacts'])}\n"
                 return output

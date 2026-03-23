@@ -242,20 +242,38 @@ def create_app() -> Any:
         if not m:
             raise HTTPException(404, f"Mission #{mission_id} not found")
 
-        # Check for artifacts
+        # Check for artifacts and the exact output json
         from pathlib import Path
+        import json
         cfg = get_config()
         artifact_dir = cfg.root / "data" / "outputs" / f"mission_{mission_id}"
         artifacts = []
         if artifact_dir.exists():
             artifacts = [f.name for f in artifact_dir.iterdir()]
 
+        final_content = m.get("result", "")[:500]
+        output_file = cfg.root / "data" / "outputs" / f"mission_{mission_id}.json"
+        if output_file.exists():
+            try:
+                with open(output_file, "r") as f:
+                    data = json.load(f)
+                res = data.get("result", {})
+                if isinstance(res, dict) and "steps" in res:
+                    steps = res["steps"]
+                    last_step = steps.get("review") or steps.get("execute") or steps.get("plan") or steps.get("intake")
+                    if last_step and "content" in last_step:
+                        step_data = json.loads(last_step["content"])
+                        if "payloads" in step_data and step_data["payloads"]:
+                            final_content = step_data["payloads"][0].get("text", "")
+            except Exception:
+                pass
+
         return {
             "id": m["id"],
             "name": m["name"],
             "studio": m["studio"],
             "status": m["status"],
-            "result": m.get("result", "")[:500],
+            "result": final_content,
             "artifacts": artifacts,
             "created_at": m.get("created_at", ""),
             "completed_at": m.get("completed_at", ""),
