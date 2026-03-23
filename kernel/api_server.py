@@ -373,6 +373,31 @@ def create_app() -> Any:
             ),
         }
 
+    @app.post("/api/mission/{mission_id}/cancel")
+    async def cancel_mission(mission_id: int):
+        """Cancel a queued or running mission."""
+        from kernel.state_manager import get_state
+        state = get_state()
+        m = state.get_mission(mission_id)
+        if not m:
+            raise HTTPException(404, f"Mission #{mission_id} not found")
+        
+        if m["status"] in ("done", "failed"):
+            return {"status": "error", "message": f"Mission already finished ({m['status']})"}
+
+        try:
+            with state._lock:
+                state._conn.execute(
+                    "UPDATE missions SET status = 'failed', result = ? WHERE id = ?",
+                    ("Cancelled by PM/User request.", mission_id)
+                )
+                state._conn.commit()
+            
+            logger.info("PM manually cancelled mission #%d", mission_id)
+            return {"status": "cancelled", "mission_id": mission_id}
+        except Exception as e:
+            raise HTTPException(500, f"Failed to cancel: {e}")
+
     @app.get("/api/missions/active")
     async def active_missions():
         """List all active (queued/running) missions."""
