@@ -207,44 +207,25 @@ def create_app() -> Any:
 
         try:
             from kernel.mission_planner import MissionPlanner
-            from kernel.state_manager import get_state
 
             planner = MissionPlanner()
-            state = get_state()
 
-            # Plan the missions
-            plan = planner.plan_objective(prompt)
-            missions_created = []
-
-            for m in plan.get("missions", []):
-                mid = state.create_mission(
-                    name=m.get("name", prompt[:80]),
-                    description=m.get("description", prompt),
-                    studio=m.get("studio", "dev"),
-                    priority=priority,
-                    metadata=json.dumps({
-                        "objective": prompt[:200],
-                        "wave": m.get("wave", 1),
-                        "source": "api",
-                    }),
-                )
-                missions_created.append({
-                    "id": mid,
-                    "name": m.get("name", ""),
-                    "studio": m.get("studio", "dev"),
-                    "wave": m.get("wave", 1),
-                })
+            # Plan and enqueue all sub-missions
+            result = await planner.plan_and_execute(prompt)
 
             logger.info(
                 "API orchestrate: %d missions created for '%s'",
-                len(missions_created), prompt[:60],
+                result.get("sub_missions", 0), prompt[:60],
             )
 
             return {
                 "status": "queued",
-                "objective": prompt[:200],
-                "missions": missions_created,
-                "total": len(missions_created),
+                "objective": result.get("objective", prompt[:200]),
+                "missions": result.get("plan", []),
+                "mission_ids": result.get("mission_ids", []),
+                "total": result.get("sub_missions", 0),
+                "studios": result.get("studios", []),
+                "waves": result.get("waves", 1),
                 "message": "Missions queued. Results will be reported via OpenClaw callback.",
             }
 

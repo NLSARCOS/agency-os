@@ -240,8 +240,8 @@ class AgencyScheduler:
 
 def run_cycle() -> dict:
     """Convenience: run one mission cycle. Used by scheduler."""
-    from kernel.mission_engine import get_engine
-    engine = get_engine()
+    from kernel.mission_engine import MissionEngine
+    engine = MissionEngine()
     results = engine.run_cycle()
     return {
         "executed": len(results),
