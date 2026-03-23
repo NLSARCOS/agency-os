@@ -223,10 +223,10 @@ class StateManager:
         self._initialized = True
         cfg = get_config()
         self._db_path = cfg.db_path
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False, timeout=15.0)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA busy_timeout=15000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(DB_SCHEMA)
         self._conn.commit()
