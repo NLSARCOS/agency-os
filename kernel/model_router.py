@@ -360,13 +360,9 @@ class ModelRouter:
             if token:
                 env["OPENCLAW_AUTH_TOKEN"] = token
 
-            cmd = ["openclaw", "agent", "--agent", "main", "--json"]
-            if model and model != "openclaw":
-                cmd.extend(["--model", model])
-            cmd.extend(["--message", full_prompt])
-
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120, env=env
+                ["openclaw", "agent", "--agent", "main", "--json", "--message", full_prompt],
+                capture_output=True, text=True, timeout=120, env=env
             )
             latency = (time.monotonic() - start) * 1000
 
