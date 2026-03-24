@@ -361,6 +361,7 @@ class AgentManager:
                 studio=target_studio,
                 system_prompt=system_prompt,
                 tools=tool_defs if tools_enabled else None,
+                tool_choice="required" if (iteration == 0 and tools_enabled) else "auto"
             )
 
             if not response["success"]:
@@ -472,6 +473,7 @@ class AgentManager:
         studio: str,
         system_prompt: str,
         tools: list[dict] | None = None,
+        tool_choice: str = "auto",
     ) -> dict[str, Any]:
         """
         Call LLM with OpenClaw-first strategy + ModelRouter fallback.
@@ -554,6 +556,7 @@ class AgentManager:
                                 system=system_prompt,
                                 tools=tools,
                                 messages=raw_msgs,
+                                tool_choice=tool_choice,
                             ),
                         )
                         resp = future.result(timeout=self.TASK_TIMEOUT_SECONDS)
@@ -565,6 +568,7 @@ class AgentManager:
                             system=system_prompt,
                             tools=tools,
                             messages=raw_msgs,
+                            tool_choice=tool_choice,
                         )
                     )
             except RuntimeError:
@@ -575,6 +579,7 @@ class AgentManager:
                         system=system_prompt,
                         tools=tools,
                         messages=raw_msgs,
+                        tool_choice=tool_choice,
                     )
                 )
 

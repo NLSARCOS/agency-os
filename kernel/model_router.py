@@ -194,6 +194,7 @@ class ModelRouter:
         max_retries: int = 2,
         tools: list[dict] | None = None,
         messages: list[dict] | None = None,
+        tool_choice: str = "auto",
     ) -> ModelResponse:
         """Call the best available model with automatic fallback.
 
@@ -219,7 +220,7 @@ class ModelRouter:
                 try:
                     import asyncio
                     response = await asyncio.to_thread(
-                        self._call_provider, model_cfg, prompt, system, tools, messages
+                        self._call_provider, model_cfg, prompt, system, tools, messages, tool_choice
                     )
                     # Log success
                     state = get_state()
@@ -291,6 +292,7 @@ class ModelRouter:
         task_id: int | None = None,
         tools: list[dict] | None = None,
         messages: list[dict] | None = None,
+        tool_choice: str = "auto",
     ) -> ModelResponse:
         """Synchronous version of call_model."""
         import asyncio
@@ -304,17 +306,17 @@ class ModelRouter:
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run,
-                        self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages),
+                        self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages, tool_choice=tool_choice),
                     )
                     return future.result()
             return loop.run_until_complete(
-                self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages)
+                self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages, tool_choice=tool_choice)
             )
         except RuntimeError:
-            return asyncio.run(self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages))
+            return asyncio.run(self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages, tool_choice=tool_choice))
 
     def _call_provider(
-        self, model_cfg: dict, prompt: str, system: str, tools: list[dict] | None = None, messages: list[dict] | None = None
+        self, model_cfg: dict, prompt: str, system: str, tools: list[dict] | None = None, messages: list[dict] | None = None, tool_choice: str = "auto"
     ) -> ModelResponse:
         provider = model_cfg["provider"]
         model_name = model_cfg["name"]
@@ -337,11 +339,11 @@ class ModelRouter:
             return self._call_openclaw(model_name, prompt, system, start)
         else:
             return self._call_openai_compatible(
-                model_name, provider, prompt, system, start, tools, messages
+                model_name, provider, prompt, system, start, tools, messages, tool_choice
             )
 
     def _call_openai_compatible(
-        self, model: str, provider: str, prompt: str, system: str, start: float, tools: list[dict] | None = None, raw_messages: list[dict] | None = None
+        self, model: str, provider: str, prompt: str, system: str, start: float, tools: list[dict] | None = None, raw_messages: list[dict] | None = None, tool_choice: str = "auto"
     ) -> ModelResponse:
         endpoint = PROVIDER_ENDPOINTS.get(provider, PROVIDER_ENDPOINTS["openrouter"])
         key_name = PROVIDER_KEY_MAP.get(provider, provider)
@@ -372,7 +374,7 @@ class ModelRouter:
         payload = {"model": api_model, "messages": messages}
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            payload["tool_choice"] = tool_choice
 
         with httpx.Client(timeout=20.0) as client:
             resp = client.post(

@@ -528,7 +528,7 @@ class MissionEngine:
                 name="Execute",
                 agent=lead_agent,
                 task=f"Execute the plan for: {name}\n"
-                f"Use available tools to produce real deliverables.",
+                f"CRITICAL: Use the provided JSON tools (e.g. write_file, shell) to produce real deliverables. DO NOT explain what you are going to do using text. YOU MUST TRIGGER THE TOOLS directly or the system will fail.",
                 depends_on=["plan"],
                 tools=[
                     "shell",
