@@ -10,10 +10,7 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: openai/gpt-4o-mini
+    - name: google/gemini-2.0-flash-lite-preview-02-05:free
       provider: openrouter
       tier: free
 
@@ -24,10 +21,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: openai/gpt-4o-mini
+    - name: google/gemini-2.0-flash-lite-preview-02-05:free
       provider: openrouter
       tier: free
 
@@ -38,10 +32,7 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: openai/gpt-4o-mini
+    - name: google/gemini-2.0-flash-lite-preview-02-05:free
       provider: openrouter
       tier: free
 
@@ -52,12 +43,6 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: minimax-m2.5:cloud
-      provider: ollama
-      tier: local
     - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
@@ -69,10 +54,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: openai/gpt-4o-mini
+    - name: google/gemini-2.0-flash-lite-preview-02-05:free
       provider: openrouter
       tier: free
 
@@ -80,9 +62,6 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
     - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
@@ -94,9 +73,6 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: kimi-k2.5:cloud
-      provider: ollama
-      tier: local
-    - name: openai/gpt-4o-mini
+    - name: google/gemini-2.0-flash-lite-preview-02-05:free
       provider: openrouter
       tier: free
