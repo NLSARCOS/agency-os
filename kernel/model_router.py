@@ -181,6 +181,8 @@ class ModelRouter:
                         model_cfg["name"], attempt + 1, last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
+                    if "rate limited" in last_error.lower():
+                        break  # Immediately skip to next model in pool
                     time.sleep(min(1 * (attempt + 1), 3))
 
         # All models failed
