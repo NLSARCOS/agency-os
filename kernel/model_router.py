@@ -353,15 +353,19 @@ class ModelRouter:
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         try:
             import os
+            import shutil
             env = os.environ.copy()
             
-            # The token is read directly from the environment (.env)
+            # Retrieve the token from environment
             token = os.environ.get("OPENCLAW_API_KEY", "")
             if token:
                 env["OPENCLAW_AUTH_TOKEN"] = token
 
+            # Safely resolve openclaw binary path (since daemon PATH may lack ~/.npm-global/bin)
+            openclaw_bin = os.environ.get("OPENCLAW_BIN") or shutil.which("openclaw") or "/home/nelson/.npm-global/bin/openclaw"
+
             result = subprocess.run(
-                ["openclaw", "agent", "--agent", "main", "--json", "--message", full_prompt],
+                [openclaw_bin, "agent", "--agent", "main", "--json", "--message", full_prompt],
                 capture_output=True, text=True, timeout=120, env=env
             )
             latency = (time.monotonic() - start) * 1000
