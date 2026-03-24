@@ -373,6 +373,9 @@ class ModelRouter:
             if result.returncode != 0:
                 raise RuntimeError(f"openclaw agent failed: {result.stderr[:200]}")
 
+            if "API rate limit reached" in result.stdout or "Rate limit" in result.stdout:
+                raise RuntimeError("openclaw agent rate limited (force fallback)")
+
             # Try JSON first, fallback to raw text
             try:
                 data = json_lib.loads(result.stdout)
