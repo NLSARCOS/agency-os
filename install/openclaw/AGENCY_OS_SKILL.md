@@ -10,49 +10,36 @@
 
 ---
 
-## 🎯 ORQUESTACIÓN — SIEMPRE VÍA API (NO CLI)
+## 🎯 ORQUESTACIÓN — VÍA HERRAMIENTAS MCP (NATIVAS)
 
-### Método Preferido: API Asíncrona
-```bash
-curl -X POST http://localhost:8080/api/orchestrate \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt": "<objetivo del usuario>", "priority": 5}'
-```
-- Retorna INMEDIATAMENTE con IDs de misiones
-- Misiones se ejecutan en background por el heartbeat
-- Resultados llegan AUTOMÁTICAMENTE vía callback a /v1/messages
-- **NO NECESITAS ESPERAR NI PREGUNTAR "¿terminó?"**
-
-### Método Fallback: CLI (solo si la API no responde)
-```bash
-cd AGENCY_ROOT && source .venv/bin/activate && agency orchestrate "<objetivo>"
-```
-
-### Detección de Intención → Orchestrate
+### Detección de Intención → delegate_task
 | Si el usuario dice... | Acción |
 |---|---|
-| Crear/construir algo (app, página, sistema) | `POST /api/orchestrate` |
-| Vender/comercializar/promocionar | `POST /api/orchestrate` |
-| Buscar leads/prospectos/clientes | `POST /api/orchestrate` |
-| Analizar/reportar/investigar | `POST /api/orchestrate` |
-| Orden de trabajo (no pregunta casual) | `POST /api/orchestrate` |
+| Crear/construir algo (app, página, sistema) | Usa tu herramienta `delegate_task` |
+| Vender/comercializar/promocionar | Usa tu herramienta `delegate_task` |
+| Buscar leads/prospectos/clientes | Usa tu herramienta `delegate_task` |
+| Analizar/reportar/investigar | Usa tu herramienta `delegate_task` |
+| Orden de trabajo (no pregunta casual) | Usa tu herramienta `delegate_task` |
 
-**NO uses orchestrate si:** es pregunta casual, conversación, o ya incluye un comando.
+- Retorna INMEDIATAMENTE con IDs de misiones.
+- Misiones se ejecutan en background por el heartbeat.
+- Resultados llegan AUTOMÁTICAMENTE.
+- **NO NECESITAS ESPERAR NI PREGUNTAR "¿terminó?"**
+
+**NO uses delegate_task si:** es pregunta casual, conversación o saludos.
 
 ---
 
 ## 📡 FEEDBACK AUTOMÁTICO
 
 Agency OS te reporta resultados AUTOMÁTICAMENTE:
-- **Por cada misión**: status, output, archivos generados
-- **Al completar todo**: reporte consolidado
-- **NO preguntes "¿terminó?"** — los resultados llegan solos
+- **NO preguntes "¿terminó?"** — los resultados llegan solos al usuario.
 
-### Verificación Manual (si necesitas)
-```bash
-curl http://localhost:8080/api/mission/{id}/status
-curl http://localhost:8080/api/missions/active
-```
+### Verificación Manual (Si te preguntan el estado)
+USA TUS HERRAMIENTAS MCP NATIVAS:
+- `get_mission_status(mission_id)`
+- `get_active_missions()`
+- `get_recent_missions()`
 
 ---
 
@@ -61,57 +48,29 @@ curl http://localhost:8080/api/missions/active
 **REGLA CRÍTICA: NUNCA le muestres al usuario un entregable incompleto o con errores.**
 
 ### Flujo de Revisión
-```
-Resultado de misión llega vía callback
-    ↓
-TÚ lo revisas: ¿Está completo? ¿Cumple lo pedido?
-    ↓
-├── SI es bueno → Aprueba + presenta al usuario
-└── NO es suficiente → Envía feedback para revisión
-```
-
-### Si el entregable tiene problemas:
-```bash
-curl -X POST http://localhost:8080/api/mission/{id}/feedback \
-  -H 'Content-Type: application/json' \
-  -d '{"action": "revise", "feedback": "Falta X, mejorar Y, completar Z"}'
-```
-Luego dile al usuario:
-> "Envié la tarea de vuelta para que la completen, te aviso cuando esté lista."
-
-### Si el entregable está bien:
-```bash
-curl -X POST http://localhost:8080/api/mission/{id}/feedback \
-  -H 'Content-Type: application/json' \
-  -d '{"action": "approve"}'
-```
-Luego presenta el resultado al usuario.
-
-### Qué pasa internamente:
-- Se crea una misión de REVISIÓN con el output original + archivos + tu feedback
-- El agente MEJORA (no empieza de cero)
-- Prioridad alta (7/10)
-- Se ejecuta automáticamente
-- Resultado revisado llega por callback
-- Puedes revisar de nuevo si necesario
+1. Te pasan el ID de una misión para revisar.
+2. Usas `get_mission_status(mission_id)` para leer el resultado de tus agentes.
+3. Lo lees cuidadosamente.
+4. Si falta calidad, usas la herramienta `submit_mission_feedback(mission_id, "Le falta X, mejorar Y", "revise")`.
+5. Si está perfecto, usas `submit_mission_feedback(mission_id, "Aprobado", "approve")`.
 
 ---
 
-## 🔧 API Completa
+## 🔧 MCP Tools Disponibles
 
-| Endpoint | Método | Qué hace |
-|---|---|---|
-| `/api/orchestrate` | POST | Enviar tarea (prompt + priority) |
-| `/api/mission/{id}/status` | GET | Consultar estado de misión |
-| `/api/mission/{id}/feedback` | POST | Revisar: revise o approve |
-| `/api/missions/active` | GET | Ver misiones en cola/corriendo |
-| `/api/health` | GET | Estado del sistema |
+Tienes integradas las siguientes 6 herramientas nativas de conexión a Agency OS. ¡Úsalas!
+- `delegate_task(prompt, priority)`: Para crear cualquier tipo de trabajo.
+- `get_active_missions()`
+- `get_recent_missions()`
+- `get_mission_status(mission_id)`
+- `submit_mission_feedback(mission_id, feedback, action)`
+- `cancel_mission(mission_id)`
 
-**Base URL:** `http://localhost:8080`
+**IMPORTANTE: NO INTENTES ESCRIBIR COMANDOS BASH O CURL. USA EXCLUSIVAMENTE LAS HERRAMIENTAS MCP QUE TIENES INYECTADAS.**
 
 ---
 
-## 📋 Comandos CLI (Fallback / Diagnóstico)
+## 📋 Comandos CLI (Solo Respaldo Diagnóstico)
 
 **Prefijo:** `cd AGENCY_ROOT && source .venv/bin/activate && agency <cmd>`
 

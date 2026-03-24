@@ -13,7 +13,7 @@ pools:
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
-    - name: openrouter/openrouter/hunter-alpha
+    - name: openai/gpt-4o-mini
       provider: openrouter
       tier: free
 
@@ -27,7 +27,7 @@ pools:
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
-    - name: openrouter/openrouter/hunter-alpha
+    - name: openai/gpt-4o-mini
       provider: openrouter
       tier: free
 
@@ -41,7 +41,7 @@ pools:
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
-    - name: openrouter/openrouter/hunter-alpha
+    - name: openai/gpt-4o-mini
       provider: openrouter
       tier: free
 
@@ -72,7 +72,7 @@ pools:
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
-    - name: openrouter/openrouter/healer-alpha
+    - name: openai/gpt-4o-mini
       provider: openrouter
       tier: free
 
@@ -97,6 +97,6 @@ pools:
     - name: kimi-k2.5:cloud
       provider: ollama
       tier: local
-    - name: openrouter/openrouter/hunter-alpha
+    - name: openai/gpt-4o-mini
       provider: openrouter
       tier: free
