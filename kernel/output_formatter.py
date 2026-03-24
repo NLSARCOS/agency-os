@@ -8,6 +8,7 @@ Transforms raw AI text output into structured, professional deliverables:
 - Action item extraction
 - Format conversion (MD → HTML, JSON → CSV)
 """
+
 from __future__ import annotations
 
 import csv
@@ -25,6 +26,7 @@ logger = logging.getLogger("agency.output")
 @dataclass
 class FormattedOutput:
     """Structured, formatted output from a studio."""
+
     raw: str = ""
     formatted: str = ""
     format_type: str = "markdown"  # markdown | html | json | csv
@@ -225,20 +227,24 @@ class OutputFormatter:
         for line in text.split("\n"):
             if line.startswith("#"):
                 if current_title:
-                    sections.append({
-                        "title": current_title,
-                        "content": "\n".join(current_content).strip(),
-                    })
+                    sections.append(
+                        {
+                            "title": current_title,
+                            "content": "\n".join(current_content).strip(),
+                        }
+                    )
                 current_title = line.lstrip("#").strip()
                 current_content = []
             else:
                 current_content.append(line)
 
         if current_title:
-            sections.append({
-                "title": current_title,
-                "content": "\n".join(current_content).strip(),
-            })
+            sections.append(
+                {
+                    "title": current_title,
+                    "content": "\n".join(current_content).strip(),
+                }
+            )
 
         return sections
 
@@ -255,13 +261,15 @@ class OutputFormatter:
 
         for pattern, action_type in patterns:
             for match in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
-                actions.append({
-                    "text": match.group(1).strip()[:200],
-                    "type": action_type,
-                    "completed": "[x]" in match.group(0).lower(),
-                })
+                actions.append(
+                    {
+                        "text": match.group(1).strip()[:200],
+                        "type": action_type,
+                        "completed": "[x]" in match.group(0).lower(),
+                    }
+                )
 
-        return actions
+        return actions  # type: ignore
 
     # ── Schema Validation ────────────────────────────────────
 
@@ -303,7 +311,9 @@ class OutputFormatter:
         html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
         html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
         # Code blocks
-        html = re.sub(r"```(\w+)?\n(.*?)```", r"<pre><code>\2</code></pre>", html, flags=re.DOTALL)
+        html = re.sub(
+            r"```(\w+)?\n(.*?)```", r"<pre><code>\2</code></pre>", html, flags=re.DOTALL
+        )
         html = re.sub(r"`(.+?)`", r"<code>\1</code>", html)
         # Lists
         html = re.sub(r"^[-*] (.+)$", r"<li>\1</li>", html, flags=re.MULTILINE)
@@ -313,7 +323,7 @@ class OutputFormatter:
         html = re.sub(r"\[(.+?)\]\((.+?)\)", r'<a href="\2">\1</a>', html)
 
         return f"""<!DOCTYPE html>
-<html><head><title>{title or 'Agency OS Report'}</title>
+<html><head><title>{title or "Agency OS Report"}</title>
 <style>body{{font-family:system-ui;max-width:800px;margin:2rem auto;padding:0 1rem;line-height:1.6}}
 code{{background:#f4f4f4;padding:2px 6px;border-radius:3px}}
 pre code{{display:block;padding:1rem;overflow-x:auto}}</style>

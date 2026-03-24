@@ -8,6 +8,7 @@ Dynamic plugin loading for extensibility:
 - Hot-reload on file change
 - Plugin validation and sandboxing
 """
+
 from __future__ import annotations
 
 import importlib
@@ -18,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore
 
 from kernel.config import get_config
 
@@ -28,6 +29,7 @@ logger = logging.getLogger("agency.plugins")
 @dataclass
 class PluginManifest:
     """Plugin descriptor loaded from plugin.yaml."""
+
     name: str
     version: str = "0.1.0"
     description: str = ""
@@ -42,6 +44,7 @@ class PluginManifest:
 @dataclass
 class LoadedPlugin:
     """A loaded and active plugin."""
+
     manifest: PluginManifest
     path: Path
     module: Any = None
@@ -117,7 +120,9 @@ class PluginLoader:
                 loaded.append(name)
                 logger.info(
                     "Plugin loaded: %s v%s (%s)",
-                    name, manifest.version, manifest.type,
+                    name,
+                    manifest.version,
+                    manifest.type,
                 )
 
             except Exception as e:
@@ -214,11 +219,14 @@ class PluginLoader:
         if ptype == "tool" and hasattr(plugin.module, "register_tools"):
             try:
                 from kernel.tool_executor import get_tool_executor
+
                 te = get_tool_executor()
                 plugin.module.register_tools(te)
                 logger.info("Plugin '%s': tools registered", plugin.manifest.name)
             except Exception as e:
-                logger.error("Plugin '%s' tool registration failed: %s", plugin.manifest.name, e)
+                logger.error(
+                    "Plugin '%s' tool registration failed: %s", plugin.manifest.name, e
+                )
 
         elif ptype == "studio" and hasattr(plugin.module, "register_studio"):
             logger.info("Plugin '%s': studio registered", plugin.manifest.name)
@@ -238,7 +246,9 @@ class PluginLoader:
             "by_type": {
                 t: sum(1 for p in self._plugins.values() if p.manifest.type == t)
                 for t in set(p.manifest.type for p in self._plugins.values())
-            } if self._plugins else {},
+            }
+            if self._plugins
+            else {},
         }
 
 

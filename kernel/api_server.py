@@ -14,6 +14,7 @@ REST API + WebSocket for external integrations:
 - POST /api/channel/webhook — Multi-channel webhook
 - GET  /                    — Web dashboard (HTML)
 """
+
 from __future__ import annotations
 
 import json
@@ -29,6 +30,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse, JSONResponse
     import uvicorn
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -37,9 +39,7 @@ except ImportError:
 def create_app() -> Any:
     """Create the FastAPI application."""
     if not HAS_FASTAPI:
-        raise ImportError(
-            "FastAPI not installed. Run: pip install fastapi uvicorn"
-        )
+        raise ImportError("FastAPI not installed. Run: pip install fastapi uvicorn")
 
     app = FastAPI(
         title="Agency OS",
@@ -79,6 +79,7 @@ def create_app() -> Any:
         oc_status = "unknown"
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
             oc_status = "connected" if oc.is_available() else "offline"
         except Exception:
@@ -100,24 +101,29 @@ def create_app() -> Any:
     @app.get("/api/studios")
     async def list_studios():
         from studios.base_studio import load_all_studios
+
         studios = load_all_studios()
         return {
             "count": len(studios),
             "studios": [
-                {"name": name, "agent": s.agent_ref}
-                for name, s in studios.items()
+                {"name": name, "agent": s.agent_ref} for name, s in studios.items()
             ],
         }
 
     @app.post("/api/studio/{name}")
     async def run_studio(name: str, request: Request):
         from studios.base_studio import load_all_studios
+
         studios = load_all_studios()
         studio = studios.get(name)
         if not studio:
             raise HTTPException(404, f"Studio '{name}' not found")
 
-        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        body = (
+            await request.json()
+            if request.headers.get("content-type") == "application/json"
+            else {}
+        )
         task = body.get("task", f"Run {name} pipeline")
 
         try:
@@ -131,6 +137,7 @@ def create_app() -> Any:
     @app.get("/api/workflows")
     async def list_workflows():
         from kernel.workflow_engine import get_workflow_engine
+
         we = get_workflow_engine()
         wfs = we.list_workflows()
         return {"count": len(wfs), "workflows": wfs}
@@ -140,11 +147,13 @@ def create_app() -> Any:
     @app.get("/api/audit/summary")
     async def audit_summary(days: int = 1):
         from kernel.audit_trail import get_audit
+
         return get_audit().get_summary(days)
 
     @app.get("/api/audit/costs")
     async def audit_costs(days: int = 1, by: str = "studio"):
         from kernel.audit_trail import get_audit
+
         a = get_audit()
         if by == "model":
             return {"by": "model", "data": a.get_costs_by_model(days)}
@@ -153,6 +162,7 @@ def create_app() -> Any:
     @app.get("/api/audit/recent")
     async def audit_recent(limit: int = 20):
         from kernel.audit_trail import get_audit
+
         return {"entries": get_audit().get_recent(limit)}
 
     # ── Guardrails ────────────────────────────────────────
@@ -160,6 +170,7 @@ def create_app() -> Any:
     @app.get("/api/guardrails")
     async def guardrails_status():
         from kernel.guardrails import get_guardrails
+
         return get_guardrails().get_status()
 
     # ── Autonomy ──────────────────────────────────────────
@@ -167,14 +178,17 @@ def create_app() -> Any:
     @app.post("/api/auto/discover")
     async def auto_discover():
         from kernel.autonomy_engine import get_autonomy_engine
+
         ae = get_autonomy_engine()
         tasks = ae.discover_tasks()
         return {
             "count": len(tasks),
             "tasks": [
                 {
-                    "source": t.source, "studio": t.studio,
-                    "priority": t.priority, "task": t.task,
+                    "source": t.source,
+                    "studio": t.studio,
+                    "priority": t.priority,
+                    "task": t.task,
                     "reason": t.reason,
                 }
                 for t in tasks
@@ -200,7 +214,7 @@ def create_app() -> Any:
         """
         body = await request.json()
         prompt = body.get("prompt", "")
-        priority = body.get("priority", 5)
+        body.get("priority", 5)
 
         if not prompt:
             raise HTTPException(400, "prompt is required")
@@ -215,7 +229,8 @@ def create_app() -> Any:
 
             logger.info(
                 "API orchestrate: %d missions created for '%s'",
-                result.get("sub_missions", 0), prompt[:60],
+                result.get("sub_missions", 0),
+                prompt[:60],
             )
 
             return {
@@ -237,15 +252,16 @@ def create_app() -> Any:
     async def mission_status(mission_id: int):
         """Check the status of a specific mission."""
         from kernel.state_manager import get_state
+
         state = get_state()
         m = state.get_mission(mission_id)
         if not m:
             raise HTTPException(404, f"Mission #{mission_id} not found")
 
         # Check for artifacts and the exact output json
-        from pathlib import Path
         import json
         from kernel.config import get_config
+
         cfg = get_config()
         artifact_dir = cfg.root / "data" / "outputs" / f"mission_{mission_id}"
         artifacts = []
@@ -261,7 +277,12 @@ def create_app() -> Any:
                 res = data.get("result", {})
                 if isinstance(res, dict) and "steps" in res:
                     steps = res["steps"]
-                    last_step = steps.get("review") or steps.get("execute") or steps.get("plan") or steps.get("intake")
+                    last_step = (
+                        steps.get("review")
+                        or steps.get("execute")
+                        or steps.get("plan")
+                        or steps.get("intake")
+                    )
                     if last_step and "content" in last_step:
                         step_data = json.loads(last_step["content"])
                         if "payloads" in step_data and step_data["payloads"]:
@@ -304,7 +325,6 @@ def create_app() -> Any:
         - Marks mission as approved (no further action)
         """
         from kernel.state_manager import get_state
-        from kernel.mission_engine import MissionEngine
 
         state = get_state()
         body = await request.json()
@@ -348,6 +368,8 @@ def create_app() -> Any:
             f"improve the original output based on the feedback."
         )
 
+        from kernel.config import get_config
+
         # Check for original artifacts to include as context
         artifact_dir = get_config().root / "data" / "outputs" / f"mission_{mission_id}"
         artifact_context = ""
@@ -368,17 +390,21 @@ def create_app() -> Any:
             description=revision_description,
             studio=studio,
             priority=priority,
-            metadata=json.dumps({
-                "type": "revision",
-                "original_mission_id": mission_id,
-                "feedback": feedback[:500],
-                "source": "openclaw_review",
-            }),
+            metadata=json.dumps(  # type: ignore
+                {
+                    "type": "revision",
+                    "original_mission_id": mission_id,
+                    "feedback": feedback[:500],
+                    "source": "openclaw_review",
+                }
+            ),
         )
 
         logger.info(
             "Revision mission #%d created for original #%d (studio: %s)",
-            revision_id, mission_id, studio,
+            revision_id,
+            mission_id,
+            studio,
         )
 
         return {
@@ -396,22 +422,26 @@ def create_app() -> Any:
     async def cancel_mission(mission_id: int):
         """Cancel a queued or running mission."""
         from kernel.state_manager import get_state
+
         state = get_state()
         m = state.get_mission(mission_id)
         if not m:
             raise HTTPException(404, f"Mission #{mission_id} not found")
-        
+
         if m["status"] in ("done", "failed"):
-            return {"status": "error", "message": f"Mission already finished ({m['status']})"}
+            return {
+                "status": "error",
+                "message": f"Mission already finished ({m['status']})",
+            }
 
         try:
             with state._lock:
                 state._conn.execute(
                     "UPDATE missions SET status = 'failed', result = ? WHERE id = ?",
-                    ("Cancelled by PM/User request.", mission_id)
+                    ("Cancelled by PM/User request.", mission_id),
                 )
                 state._conn.commit()
-            
+
             logger.info("PM manually cancelled mission #%d", mission_id)
             return {"status": "cancelled", "mission_id": mission_id}
         except Exception as e:
@@ -421,6 +451,7 @@ def create_app() -> Any:
     async def recent_missions(limit: int = 5):
         """List recently completed or failed missions."""
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
             with state._lock:
@@ -429,12 +460,10 @@ def create_app() -> Any:
                        FROM missions
                        WHERE status IN ('done', 'failed')
                        ORDER BY completed_at DESC, id DESC
-                       LIMIT ?""", (limit,)
+                       LIMIT ?""",
+                    (limit,),
                 ).fetchall()
-            return {
-                "count": len(rows),
-                "missions": [dict(r) for r in rows]
-            }
+            return {"count": len(rows), "missions": [dict(r) for r in rows]}
         except Exception as e:
             return {"error": str(e)}
 
@@ -442,6 +471,7 @@ def create_app() -> Any:
     async def active_missions():
         """List all active (queued/running) missions."""
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
             with state._lock:
@@ -463,6 +493,7 @@ def create_app() -> Any:
     @app.post("/api/channel/webhook")
     async def channel_webhook(request: Request):
         from kernel.channel_connector import get_channel_connector, ChannelType
+
         body = await request.json()
         channel = body.get("channel", "api")
         try:
@@ -525,6 +556,7 @@ def create_app() -> Any:
         }
         """
         from kernel.state_manager import get_state
+
         state = get_state()
         body = await request.json()
 
@@ -565,6 +597,7 @@ def create_app() -> Any:
     async def list_scheduled_tasks():
         """List all scheduled tasks (static + dynamic)."""
         from kernel.state_manager import get_state
+
         state = get_state()
         tasks = []
 
@@ -576,29 +609,34 @@ def create_app() -> Any:
                    FROM scheduled_tasks ORDER BY created_at DESC"""
             ).fetchall()
             for r in rows:
-                tasks.append({
-                    "name": r["name"],
-                    "prompt": r["prompt"],
-                    "interval_minutes": r["interval_minutes"],
-                    "studio": r["studio"],
-                    "priority": r["priority"],
-                    "enabled": bool(r["enabled"]),
-                    "type": "dynamic",
-                    "created_at": r["created_at"],
-                })
+                tasks.append(
+                    {
+                        "name": r["name"],
+                        "prompt": r["prompt"],
+                        "interval_minutes": r["interval_minutes"],
+                        "studio": r["studio"],
+                        "priority": r["priority"],
+                        "enabled": bool(r["enabled"]),
+                        "type": "dynamic",
+                        "created_at": r["created_at"],
+                    }
+                )
         except Exception:
             pass  # Table may not exist yet
 
         # Static tasks from schedule.yaml
         from kernel.scheduler import DEFAULT_SCHEDULE
+
         for job in DEFAULT_SCHEDULE:
-            tasks.append({
-                "name": job["name"],
-                "description": job.get("description", ""),
-                "interval_minutes": job["interval_minutes"],
-                "function": job["function"],
-                "type": "static",
-            })
+            tasks.append(
+                {
+                    "name": job["name"],
+                    "description": job.get("description", ""),
+                    "interval_minutes": job["interval_minutes"],
+                    "function": job["function"],
+                    "type": "static",
+                }
+            )
 
         return {"count": len(tasks), "tasks": tasks}
 
@@ -606,11 +644,10 @@ def create_app() -> Any:
     async def delete_scheduled_task(name: str):
         """Delete a dynamic scheduled task."""
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
-            state._conn.execute(
-                "DELETE FROM scheduled_tasks WHERE name = ?", (name,)
-            )
+            state._conn.execute("DELETE FROM scheduled_tasks WHERE name = ?", (name,))
             state._conn.commit()
             return {"status": "deleted", "name": name}
         except Exception as e:
@@ -620,6 +657,7 @@ def create_app() -> Any:
     async def toggle_scheduled_task(name: str, request: Request):
         """Enable or disable a dynamic scheduled task."""
         from kernel.state_manager import get_state
+
         state = get_state()
         body = await request.json()
         enabled = 1 if body.get("enabled", True) else 0
@@ -647,6 +685,7 @@ def create_app() -> Any:
         GET /api/logs?limit=50&level=error&source=mission_engine
         """
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
             query = "SELECT * FROM events WHERE 1=1"
@@ -676,6 +715,7 @@ def create_app() -> Any:
     async def logs_summary():
         """Get a summary of recent log activity."""
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
             with state._lock:
@@ -699,6 +739,7 @@ def create_app() -> Any:
     @app.get("/api/clients")
     async def list_clients(stage: str = "", limit: int = 100):
         from kernel.state_manager import get_state
+
         state = get_state()
         clients = state.get_clients(pipeline_stage=stage or None, limit=limit)
         return {"count": len(clients), "clients": clients}
@@ -706,6 +747,7 @@ def create_app() -> Any:
     @app.post("/api/clients")
     async def create_client(request: Request):
         from kernel.state_manager import get_state
+
         state = get_state()
         body = await request.json()
         name = body.get("name", "")
@@ -725,6 +767,7 @@ def create_app() -> Any:
     @app.patch("/api/clients/{client_id}")
     async def update_client(client_id: int, request: Request):
         from kernel.state_manager import get_state
+
         state = get_state()
         body = await request.json()
         state.update_client(client_id, **body)
@@ -733,6 +776,7 @@ def create_app() -> Any:
     @app.get("/api/clients/{client_id}")
     async def get_client(client_id: int):
         from kernel.state_manager import get_state
+
         state = get_state()
         c = state.get_client(client_id)
         if not c:
@@ -744,11 +788,13 @@ def create_app() -> Any:
     @app.get("/api/financials/summary")
     async def financial_summary(days: int = 30):
         from kernel.state_manager import get_state
+
         return get_state().get_financial_summary(days)
 
     @app.post("/api/financials")
     async def log_financial(request: Request):
         from kernel.state_manager import get_state
+
         state = get_state()
         body = await request.json()
         fid = state.log_financial(
@@ -766,6 +812,7 @@ def create_app() -> Any:
     @app.get("/api/report/weekly")
     async def weekly_report():
         from kernel.state_manager import get_state
+
         return get_state().get_weekly_report_data()
 
     # ── Pipeline Summary ──────────────────────────────────
@@ -773,6 +820,7 @@ def create_app() -> Any:
     @app.get("/api/pipeline")
     async def pipeline_summary():
         from kernel.state_manager import get_state
+
         state = get_state()
         try:
             stages = state._conn.execute(
@@ -789,14 +837,7 @@ def create_app() -> Any:
         except Exception as e:
             raise HTTPException(500, str(e))
 
-    # ── Full Dashboard ────────────────────────────────────
 
-    @app.get("/", response_class=HTMLResponse)
-    async def dashboard():
-        dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
-        if dashboard_path.exists():
-            return HTMLResponse(dashboard_path.read_text())
-        return HTMLResponse(_EMBEDDED_DASHBOARD)
 
     return app
 
@@ -1008,4 +1049,3 @@ setInterval(refresh, 8000);
 </script>
 </body>
 </html>"""
-

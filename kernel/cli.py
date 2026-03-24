@@ -1,80 +1,108 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Unified CLI
+Agency OS v5.0.0 — Unified CLI
 
 Full system control: missions, agents, tools, studios,
 OpenClaw gateway, events, health, and reporting.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import sys
 
 import click
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
+
+from kernel.config import get_config
+from kernel.state_manager import get_state, MissionStatus
 
 console = Console()
 
 
-def _setup_logging(verbose: bool = False) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(console=console, rich_tracebacks=True)],
-    )
+# Logging is now handled inside main() to access config
 
 
 # ── Main Group ────────────────────────────────────────────────
 
+
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging")
-@click.version_option("3.0.0", prog_name="Agency OS")
+@click.version_option("5.0.0", prog_name="Agency OS")
 def main(verbose: bool) -> None:
-    """🏢 Agency OS v3.0 — Sistema Operativo de Agencia AI
+    """🏢 Agency OS v5.0 — Sistema Operativo de Agencia AI
 
     Desarrollo · Marketing · Ventas · Prospección · ABM · Analytics · Creative
 
     Powered by OpenClaw + Multi-Agent DAG Execution
     """
-    _setup_logging(verbose)
+    cfg = get_config()
+
+    # Ensure logs directory exists
+    cfg.logs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = cfg.logs_dir / "agency.log"
+
+    level = logging.DEBUG if verbose else logging.INFO
+
+    # Configure logging with both Rich (console) and File handlers
+    handlers = [
+        RichHandler(console=console, rich_tracebacks=True),
+        logging.FileHandler(log_file, encoding="utf-8"),
+    ]
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+        if not isinstance(handlers[0], RichHandler)
+        else "%(message)s",
+        datefmt="[%X]",
+        handlers=handlers,
+    )
+
+    # If using RichHandler, we need a separate formatter for the file handler
+    file_formatter = logging.Formatter(
+        "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+    )
+    handlers[1].setFormatter(file_formatter)
 
 
 # ── Status ────────────────────────────────────────────────────
 
+
 @main.command()
 def status() -> None:
     """Show full system status dashboard."""
-    from kernel.config import get_config
-    from kernel.state_manager import get_state
-
     cfg = get_config()
     state = get_state()
     stats = state.get_dashboard_stats()
 
     # Header
-    console.print(Panel.fit(
-        "[bold cyan]🏢 AGENCY OS v3.0[/bold cyan] — Sistema Operativo de Agencia AI\n"
-        "[dim]OpenClaw-powered · Multi-Agent · DAG Execution[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]🏢 AGENCY OS v5.0[/bold cyan] — Sistema Operativo de Agencia AI\n"
+            "[dim]OpenClaw-powered · Multi-Agent · DAG Execution[/dim]",
+            border_style="cyan",
+        )
+    )
     console.print(f"  📁 Root: [dim]{cfg.root}[/dim]")
     console.print(f"  💻 Platform: [green]{cfg.platform}[/green]")
-    console.print(f"  🔑 Providers: [yellow]{', '.join(cfg.available_providers) or 'None configured'}[/yellow]")
+    console.print(
+        f"  🔑 Providers: [yellow]{', '.join(cfg.available_providers) or 'None configured'}[/yellow]"
+    )
 
     # OpenClaw status
     try:
         from kernel.openclaw_bridge import get_openclaw
+
         oc = get_openclaw()
         oc_status = oc.get_status()
         oc_icon = "🟢" if oc_status["available"] else "🔴"
-        console.print(f"  🐙 OpenClaw: {oc_icon} {oc_status['gateway_url']} ({oc_status['active_sessions']} sessions)")
+        console.print(
+            f"  🐙 OpenClaw: {oc_icon} {oc_status['gateway_url']} ({oc_status['active_sessions']} sessions)"
+        )
     except Exception:
         console.print("  🐙 OpenClaw: [red]Not configured[/red]")
 
@@ -86,17 +114,27 @@ def status() -> None:
         table = Table(title="📊 Missions", border_style="blue")
         table.add_column("Status", style="bold")
         table.add_column("Count", justify="right")
-        icons = {"queued": "⏳", "active": "🔵", "running": "🟢", "review": "🔎",
-                 "done": "✅", "failed": "❌", "blocked": "🚧"}
+        icons = {
+            "queued": "⏳",
+            "active": "🔵",
+            "running": "🟢",
+            "review": "🔎",
+            "done": "✅",
+            "failed": "❌",
+            "blocked": "🚧",
+        }
         for s, c in sorted(mission_stats.items()):
             table.add_row(f"{icons.get(s, '⚪')} {s.capitalize()}", str(c))
         console.print(table)
     else:
-        console.print("[dim]No missions yet. Use [bold]agency-os mission add[/bold] to create one.[/dim]")
+        console.print(
+            "[dim]No missions yet. Use [bold]agency-os mission add[/bold] to create one.[/dim]"
+        )
 
     # Agent status
     try:
         from kernel.agent_manager import get_agent_manager
+
         mgr = get_agent_manager()
         agents = mgr.list_agents()
         if agents:
@@ -134,13 +172,18 @@ def status() -> None:
         console.print()
         console.print("[bold]📝 Recent Events[/bold]")
         for e in events:
-            level_color = {"info": "blue", "warning": "yellow", "error": "red"}.get(e["level"], "white")
-            console.print(f"  [{level_color}]●[/{level_color}] {e['event_type']}: {e['message'][:80]}")
+            level_color = {"info": "blue", "warning": "yellow", "error": "red"}.get(
+                e["level"], "white"
+            )
+            console.print(
+                f"  [{level_color}]●[/{level_color}] {e['event_type']}: {e['message'][:80]}"
+            )
 
     console.print()
 
 
 # ── Mission Commands ──────────────────────────────────────────
+
 
 @main.group()
 def mission() -> None:
@@ -151,31 +194,38 @@ def mission() -> None:
 @mission.command("add")
 @click.argument("name")
 @click.option("-d", "--description", default="", help="Mission description")
-@click.option("-p", "--priority", default=5, type=int, help="Priority (1=highest, 10=lowest)")
+@click.option(
+    "-p", "--priority", default=5, type=int, help="Priority (1=highest, 10=lowest)"
+)
 @click.option("-s", "--studio", default=None, help="Force assign to studio")
 def mission_add(name: str, description: str, priority: int, studio: str | None) -> None:
     """Add a new mission to the queue."""
     from kernel.mission_engine import MissionEngine
 
     engine = MissionEngine()
-    mission_id = engine.submit_mission(name, description, priority, force_studio=studio or "")
+    mission_id = engine.submit_mission(
+        name, description, priority, force_studio=studio or ""
+    )
     m = engine.state.get_mission(mission_id)
 
     # Get crew info
     from kernel.agent_manager import get_agent_manager
-    mgr = get_agent_manager()
-    crew = mgr.assemble_crew(m["studio"])
 
-    console.print(Panel(
-        f"[bold green]✅ Mission #{mission_id} created[/bold green]\n\n"
-        f"  📌 Name: {name}\n"
-        f"  🎨 Studio: [cyan]{m['studio']}[/cyan]\n"
-        f"  📊 Priority: {priority}\n"
-        f"  🤖 Crew: [magenta]{', '.join(crew)}[/magenta]\n"
-        f"  📝 Status: queued",
-        title="New Mission",
-        border_style="green",
-    ))
+    mgr = get_agent_manager()
+    crew = mgr.assemble_crew(m["studio"])  # type: ignore
+
+    console.print(
+        Panel(
+            f"[bold green]✅ Mission #{mission_id} created[/bold green]\n\n"
+            f"  📌 Name: {name}\n"
+            f"  🎨 Studio: [cyan]{m['studio']}[/cyan]\n"  # type: ignore
+            f"  📊 Priority: {priority}\n"
+            f"  🤖 Crew: [magenta]{', '.join(crew)}[/magenta]\n"
+            f"  📝 Status: queued",
+            title="New Mission",
+            border_style="green",
+        )
+    )
 
 
 @mission.command("list")
@@ -183,7 +233,7 @@ def mission_add(name: str, description: str, priority: int, studio: str | None) 
 @click.option("--limit", "-n", default=20, type=int, help="Number of results")
 def mission_list(status: str | None, limit: int) -> None:
     """List all missions."""
-    from kernel.state_manager import MissionStatus, get_state
+    from kernel.state_manager import get_state
 
     state = get_state()
     ms = None
@@ -208,13 +258,22 @@ def mission_list(status: str | None, limit: int) -> None:
     table.add_column("Status")
     table.add_column("Created", style="dim")
 
-    icons = {"queued": "⏳", "active": "🔵", "running": "🟢", "review": "🔎",
-             "done": "✅", "failed": "❌"}
+    icons = {
+        "queued": "⏳",
+        "active": "🔵",
+        "running": "🟢",
+        "review": "🔎",
+        "done": "✅",
+        "failed": "❌",
+    }
     for m in missions:
         s = m.get("status", "")
         table.add_row(
-            str(m["id"]), m["name"][:50], m["studio"],
-            str(m["priority"]), f"{icons.get(s, '⚪')} {s}",
+            str(m["id"]),
+            m["name"][:50],
+            m["studio"],
+            str(m["priority"]),
+            f"{icons.get(s, '⚪')} {s}",
             m["created_at"][:19],
         )
     console.print(table)
@@ -234,33 +293,44 @@ def mission_run(mission_id: int) -> None:
 
     if result.get("success"):
         steps = result.get("steps", {})
-        console.print(Panel(
-            f"[green]✅ Mission #{mission_id} completed[/green]\n"
-            f"  ⏱️  Duration: {result.get('duration_ms', 0):.0f}ms\n"
-            f"  📦 Steps: {len(steps)}\n"
-            f"  🤖 Status: {result.get('status', '')}",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"[green]✅ Mission #{mission_id} completed[/green]\n"
+                f"  ⏱️  Duration: {result.get('duration_ms', 0):.0f}ms\n"
+                f"  📦 Steps: {len(steps)}\n"
+                f"  🤖 Status: {result.get('status', '')}",
+                border_style="green",
+            )
+        )
         for step_id, step_data in steps.items():
-            icon = "✅" if step_data["status"] == "completed" else "❌" if step_data["status"] == "failed" else "⏭️"
-            console.print(f"  {icon} {step_id}: {step_data['agent']} ({step_data.get('duration_ms', 0):.0f}ms)")
+            icon = (
+                "✅"
+                if step_data["status"] == "completed"
+                else "❌"
+                if step_data["status"] == "failed"
+                else "⏭️"
+            )
+            console.print(
+                f"  {icon} {step_id}: {step_data['agent']} ({step_data.get('duration_ms', 0):.0f}ms)"
+            )
             # Show artifacts
             artifacts = step_data.get("artifacts", [])
             for art in artifacts:
                 console.print(f"      📄 {art}")
     else:
-        console.print(Panel(
-            f"[red]❌ Mission #{mission_id} failed[/red]\n"
-            f"  💥 Error: {result.get('error', 'Unknown')[:300]}",
-            border_style="red",
-        ))
+        console.print(
+            Panel(
+                f"[red]❌ Mission #{mission_id} failed[/red]\n"
+                f"  💥 Error: {result.get('error', 'Unknown')[:300]}",
+                border_style="red",
+            )
+        )
 
 
 @mission.command("results")
 @click.argument("mission_id", type=int)
 def mission_results(mission_id: int) -> None:
     """📦 View results and artifacts for a completed mission."""
-    from pathlib import Path
     import json as json_mod
 
     cfg = get_config()
@@ -272,13 +342,15 @@ def mission_results(mission_id: int) -> None:
 
     if mission_file.exists():
         data = json_mod.loads(mission_file.read_text())
-        console.print(Panel(
-            f"[bold]Mission #{mission_id}: {data.get('name', 'N/A')}[/bold]\n"
-            f"  Studio: {data.get('studio', 'N/A')}\n"
-            f"  Success: {'✅' if data.get('success') else '❌'}\n"
-            f"  Timestamp: {data.get('timestamp', 'N/A')}",
-            border_style="green" if data.get("success") else "red",
-        ))
+        console.print(
+            Panel(
+                f"[bold]Mission #{mission_id}: {data.get('name', 'N/A')}[/bold]\n"
+                f"  Studio: {data.get('studio', 'N/A')}\n"
+                f"  Success: {'✅' if data.get('success') else '❌'}\n"
+                f"  Timestamp: {data.get('timestamp', 'N/A')}",
+                border_style="green" if data.get("success") else "red",
+            )
+        )
     else:
         console.print(f"[yellow]No output file for mission #{mission_id}[/yellow]")
 
@@ -300,7 +372,6 @@ def mission_results(mission_id: int) -> None:
 @mission.command("outputs")
 def mission_outputs() -> None:
     """📦 List all mission outputs and objective reports."""
-    from pathlib import Path
 
     cfg = get_config()
     output_dir = cfg.data_dir / "outputs"
@@ -338,10 +409,13 @@ def mission_outputs() -> None:
                 console.print(f"      ... and {len(files) - 5} more")
 
     if not obj_reports and not mission_files and not mission_dirs:
-        console.print("[yellow]No outputs yet. Run `agency orchestrate` first.[/yellow]")
+        console.print(
+            "[yellow]No outputs yet. Run `agency orchestrate` first.[/yellow]"
+        )
 
 
 # ── Agent Commands ────────────────────────────────────────────
+
 
 @main.group()
 def agent() -> None:
@@ -397,16 +471,18 @@ def agent_run(agent_id: str, task: str) -> None:
         result = mgr.execute_task(agent_id, task)
 
     if result["success"]:
-        console.print(Panel(
-            f"[green]✅ Task completed[/green]\n\n"
-            f"  🤖 Agent: {result['agent']}\n"
-            f"  🧠 Model: {result['model']}\n"
-            f"  ⏱️  Duration: {result['duration_ms']:.0f}ms\n"
-            f"  🔧 Tools used: {len(result.get('tool_results', []))}\n\n"
-            f"[bold]Output:[/bold]\n{result['content'][:500]}",
-            border_style="green",
-            title=f"Agent: {agent_id}",
-        ))
+        console.print(
+            Panel(
+                f"[green]✅ Task completed[/green]\n\n"
+                f"  🤖 Agent: {result['agent']}\n"
+                f"  🧠 Model: {result['model']}\n"
+                f"  ⏱️  Duration: {result['duration_ms']:.0f}ms\n"
+                f"  🔧 Tools used: {len(result.get('tool_results', []))}\n\n"
+                f"[bold]Output:[/bold]\n{result['content'][:500]}",
+                border_style="green",
+                title=f"Agent: {agent_id}",
+            )
+        )
     else:
         console.print(f"[red]❌ Failed: {result.get('error', '')}[/red]")
 
@@ -432,6 +508,7 @@ def agent_delegate(from_agent: str, to_agent: str, task: str) -> None:
 
 # ── Tool Commands ─────────────────────────────────────────────
 
+
 @main.group()
 def tool() -> None:
     """Manage and execute tools (shell, HTTP, file, DB, git)."""
@@ -439,7 +516,9 @@ def tool() -> None:
 
 
 @tool.command("list")
-@click.option("-a", "--agent", "agent_id", default=None, help="Filter by agent permissions")
+@click.option(
+    "-a", "--agent", "agent_id", default=None, help="Filter by agent permissions"
+)
 def tool_list(agent_id: str | None) -> None:
     """List available tools."""
     from kernel.tool_executor import get_tool_executor
@@ -465,7 +544,9 @@ def tool_list(agent_id: str | None) -> None:
 @tool.command("exec")
 @click.argument("tool_name")
 @click.option("-p", "--params", default="{}", help="JSON params")
-@click.option("-a", "--agent", "agent_id", default="system", help="Agent ID for permissions")
+@click.option(
+    "-a", "--agent", "agent_id", default="system", help="Agent ID for permissions"
+)
 def tool_exec(tool_name: str, params: str, agent_id: str) -> None:
     """Execute a tool directly."""
     from kernel.tool_executor import get_tool_executor
@@ -515,6 +596,7 @@ def tool_history(tool_name: str | None, limit: int) -> None:
 
 # ── OpenClaw Commands ─────────────────────────────────────────
 
+
 @main.group()
 def openclaw() -> None:
     """OpenClaw gateway management."""
@@ -530,14 +612,16 @@ def openclaw_status() -> None:
     status = oc.get_status()
 
     icon = "🟢" if status["available"] else "🔴"
-    console.print(Panel(
-        f"[bold]{icon} OpenClaw Gateway[/bold]\n\n"
-        f"  🌐 URL: {status['gateway_url']}\n"
-        f"  📡 Available: {'Yes' if status['available'] else 'No'}\n"
-        f"  🔗 Active Sessions: {status['active_sessions']}",
-        border_style="cyan",
-        title="🐙 OpenClaw",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{icon} OpenClaw Gateway[/bold]\n\n"
+            f"  🌐 URL: {status['gateway_url']}\n"
+            f"  📡 Available: {'Yes' if status['available'] else 'No'}\n"
+            f"  🔗 Active Sessions: {status['active_sessions']}",
+            border_style="cyan",
+            title="🐙 OpenClaw",
+        )
+    )
 
     if status["sessions"]:
         console.print("\n[bold]Sessions:[/bold]")
@@ -564,6 +648,7 @@ def openclaw_ask(prompt: str, model: str, agent_id: str) -> None:
 
 
 # ── Studio Commands ───────────────────────────────────────────
+
 
 @main.group()
 def studio() -> None:
@@ -618,16 +703,23 @@ def studio_run(studio_name: str, task: str, description: str) -> None:
     result = engine.execute_mission(mission_id)
 
     if result.get("success"):
-        console.print(f"[green]✅ {studio_name.capitalize()} pipeline completed[/green]")
+        console.print(
+            f"[green]✅ {studio_name.capitalize()} pipeline completed[/green]"
+        )
     else:
-        console.print(f"[red]❌ {studio_name.capitalize()} pipeline failed: {result.get('error', '')}[/red]")
+        console.print(
+            f"[red]❌ {studio_name.capitalize()} pipeline failed: {result.get('error', '')}[/red]"
+        )
 
 
 # ── Events ────────────────────────────────────────────────────
 
+
 @main.command("events")
 @click.option("-t", "--type", "event_type", default=None, help="Filter by event type")
-@click.option("-l", "--level", default=None, help="Filter by level (info/warning/error)")
+@click.option(
+    "-l", "--level", default=None, help="Filter by level (info/warning/error)"
+)
 @click.option("-n", "--limit", default=20, type=int)
 def events_cmd(event_type: str | None, level: str | None, limit: int) -> None:
     """Show system events."""
@@ -648,7 +740,9 @@ def events_cmd(event_type: str | None, level: str | None, limit: int) -> None:
     table.add_column("Time", style="dim")
 
     for e in events:
-        level_style = {"info": "blue", "warning": "yellow", "error": "red"}.get(e["level"], "white")
+        level_style = {"info": "blue", "warning": "yellow", "error": "red"}.get(
+            e["level"], "white"
+        )
         table.add_row(
             e["event_type"],
             e["message"][:60],
@@ -661,6 +755,7 @@ def events_cmd(event_type: str | None, level: str | None, limit: int) -> None:
 
 # ── Cycle / Daemon / Heartbeat ──────────────────────────────
 
+
 @main.command()
 @click.option("--once", is_flag=True, help="Run a single cycle then exit")
 @click.option("--daemon", is_flag=True, help="Run the 24/7 Agency Heartbeat")
@@ -669,14 +764,16 @@ def start(once: bool, daemon: bool) -> None:
     if daemon:
         import asyncio
         from kernel.heartbeat import get_heartbeat
-        
-        console.print(Panel(
-            "[bold green]🫀 Agency OS v5.0 Heartbeat Starting[/bold green]\n\n"
-            "  The agency is now alive and running 24/7.\n"
-            "  Press Ctrl+C to stop",
-            border_style="green",
-        ))
-        
+
+        console.print(
+            Panel(
+                "[bold green]🫀 Agency OS v5.0 Heartbeat Starting[/bold green]\n\n"
+                "  The agency is now alive and running 24/7.\n"
+                "  Press Ctrl+C to stop",
+                border_style="green",
+            )
+        )
+
         hb = get_heartbeat()
         try:
             asyncio.run(hb.run())
@@ -695,22 +792,29 @@ def start(once: bool, daemon: bool) -> None:
         results = sched.run_once()
         for r in results:
             icon = "✅" if r["status"] == "ok" else "❌"
-            console.print(f"  {icon} {r['job']}: {r['status']} ({r.get('duration', '?')}s)")
+            console.print(
+                f"  {icon} {r['job']}: {r['status']} ({r.get('duration', '?')}s)"
+            )
     else:
-        console.print(Panel(
-            "[bold green]🚀 Agency OS v3.0 Scheduler Starting[/bold green]\n\n"
-            f"  Jobs: {len(sched._jobs)}\n"
-            "  Press Ctrl+C to stop",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                "[bold green]🚀 Agency OS v5.0 Scheduler Starting[/bold green]\n\n"
+                f"  Jobs: {len(sched._jobs)}\n"
+                "  Press Ctrl+C to stop",
+                border_style="green",
+            )
+        )
         sched.start_daemon()
 
 
 # ── Report ────────────────────────────────────────────────────
 
+
 @main.command()
 @click.option("--json", "fmt", flag_value="json", help="Output as JSON")
-@click.option("--markdown", "fmt", flag_value="markdown", default=True, help="Output as Markdown")
+@click.option(
+    "--markdown", "fmt", flag_value="markdown", default=True, help="Output as Markdown"
+)
 def report(fmt: str) -> None:
     """Generate and display a system report."""
     from kernel.reporter import generate_report
@@ -720,10 +824,12 @@ def report(fmt: str) -> None:
         console.print_json(report_str)
     else:
         from rich.markdown import Markdown
+
         console.print(Markdown(report_str))
 
 
 # ── Route (utility) ──────────────────────────────────────────
+
 
 @main.command()
 @click.argument("task_text")
@@ -733,17 +839,20 @@ def route(task_text: str) -> None:
 
     result = route_task(task_text)
 
-    console.print(Panel(
-        f"[bold]📌 Task:[/bold] {result.task}\n"
-        f"[bold]🎨 Studio:[/bold] [cyan]{result.studio}[/cyan]\n"
-        f"[bold]📊 Confidence:[/bold] {result.confidence:.0%}\n"
-        f"[bold]🏆 Scores:[/bold] {json.dumps(result.scores, indent=2)}",
-        title="🧭 Route Result",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold]📌 Task:[/bold] {result.task}\n"
+            f"[bold]🎨 Studio:[/bold] [cyan]{result.studio}[/cyan]\n"
+            f"[bold]📊 Confidence:[/bold] {result.confidence:.0%}\n"
+            f"[bold]🏆 Scores:[/bold] {json.dumps(result.scores, indent=2)}",
+            title="🧭 Route Result",
+            border_style="cyan",
+        )
+    )
 
 
 # ── Health ────────────────────────────────────────────────────
+
 
 @main.command()
 def health() -> None:
@@ -754,7 +863,11 @@ def health() -> None:
     is_healthy = checks.pop("healthy", False)
     checks.pop("timestamp", None)
 
-    title = "[bold green]✅ System Healthy[/bold green]" if is_healthy else "[bold red]❌ System Degraded[/bold red]"
+    title = (
+        "[bold green]✅ System Healthy[/bold green]"
+        if is_healthy
+        else "[bold red]❌ System Degraded[/bold red]"
+    )
     console.print(Panel(title, border_style="green" if is_healthy else "red"))
 
     for check, ok in checks.items():
@@ -764,6 +877,7 @@ def health() -> None:
     # OpenClaw check
     try:
         from kernel.openclaw_bridge import get_openclaw
+
         oc = get_openclaw()
         available = oc.is_available()
         console.print(f"  {'✅' if available else '❌'} OpenClaw gateway")
@@ -773,6 +887,7 @@ def health() -> None:
     # Agent check
     try:
         from kernel.agent_manager import get_agent_manager
+
         mgr = get_agent_manager()
         count = len(mgr.list_agents())
         console.print(f"  ✅ Agents loaded ({count})")
@@ -781,6 +896,7 @@ def health() -> None:
 
 
 # ── Init ──────────────────────────────────────────────────────
+
 
 @main.command()
 @click.argument("objective", nargs=-1, required=True)
@@ -866,8 +982,11 @@ def init() -> None:
 
     cfg = get_config()
     dirs = [
-        cfg.data_dir, cfg.logs_dir, cfg.reports_dir,
-        cfg.studios_dir, cfg.configs_dir,
+        cfg.data_dir,
+        cfg.logs_dir,
+        cfg.reports_dir,
+        cfg.studios_dir,
+        cfg.configs_dir,
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
@@ -877,10 +996,11 @@ def init() -> None:
         env_example = cfg.root / "configs" / "env.example"
         if env_example.exists():
             import shutil
+
             shutil.copy(env_example, env_file)
             console.print("  📄 Created .env from template")
 
-    console.print("[green]✅ Agency OS v3.0 initialized[/green]")
+    console.print("[green]✅ Agency OS v5.0.0 initialized[/green]")
     console.print(f"  📁 Root: {cfg.root}")
     console.print(f"  📊 Database: {cfg.db_path}")
     console.print(f"  📁 Studios: {cfg.studios_dir}")
@@ -888,6 +1008,7 @@ def init() -> None:
 
 
 # ── Workflow Commands ─────────────────────────────────────────
+
 
 @main.group()
 def workflow() -> None:
@@ -904,7 +1025,9 @@ def workflow_list() -> None:
     workflows = engine.list_workflows()
 
     if not workflows:
-        console.print("[dim]No workflows found. Add YAML files to studios/*/workflows/[/dim]")
+        console.print(
+            "[dim]No workflows found. Add YAML files to studios/*/workflows/[/dim]"
+        )
         return
 
     table = Table(title="📋 Workflows", border_style="blue")
@@ -916,15 +1039,20 @@ def workflow_list() -> None:
 
     for wf in workflows:
         table.add_row(
-            wf["id"], wf["name"], wf["studio"],
-            str(wf["nodes"]), wf["description"][:50],
+            wf["id"],
+            wf["name"],
+            wf["studio"],
+            str(wf["nodes"]),
+            wf["description"][:50],
         )
     console.print(table)
 
 
 @workflow.command("run")
 @click.argument("workflow_id")
-@click.option("-m", "--mission", "mission_id", default=None, type=int, help="Link to mission ID")
+@click.option(
+    "-m", "--mission", "mission_id", default=None, type=int, help="Link to mission ID"
+)
 def workflow_run(workflow_id: str, mission_id: int | None) -> None:
     """Execute a workflow by ID."""
     from kernel.workflow_engine import get_workflow_engine
@@ -936,27 +1064,39 @@ def workflow_run(workflow_id: str, mission_id: int | None) -> None:
         run = engine.execute(workflow_id, mission_id=mission_id)
 
     if run.status.value == "completed":
-        console.print(Panel(
-            f"[green]✅ Workflow completed[/green]\n"
-            f"  📋 Workflow: {run.workflow_id}\n"
-            f"  ⏱️  Duration: {run.duration_ms:.0f}ms\n"
-            f"  📦 Nodes: {len(run.node_results)}",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"[green]✅ Workflow completed[/green]\n"
+                f"  📋 Workflow: {run.workflow_id}\n"
+                f"  ⏱️  Duration: {run.duration_ms:.0f}ms\n"
+                f"  📦 Nodes: {len(run.node_results)}",
+                border_style="green",
+            )
+        )
         for node_id, data in run.node_results.items():
-            icon = {"completed": "✅", "failed": "❌", "skipped": "⏭️"}.get(data["status"], "⚪")
-            console.print(f"  {icon} {node_id}: {data['status']} ({data.get('duration_ms', 0):.0f}ms)")
+            icon = {"completed": "✅", "failed": "❌", "skipped": "⏭️"}.get(
+                data["status"], "⚪"
+            )
+            console.print(
+                f"  {icon} {node_id}: {data['status']} ({data.get('duration_ms', 0):.0f}ms)"
+            )
     elif run.status.value == "paused":
-        console.print(Panel(
-            f"[yellow]⏸️  Workflow paused — human input needed[/yellow]\n\n"
-            f"  📋 Run ID: {run.id}\n"
-            f"  📍 Node: {run.current_node}\n"
-            f"  💬 {run.human_input_request[:200]}",
-            border_style="yellow",
-        ))
-        console.print("[dim]Resume with: agency-os workflow resume [run_id] [response][/dim]")
+        console.print(
+            Panel(
+                f"[yellow]⏸️  Workflow paused — human input needed[/yellow]\n\n"
+                f"  📋 Run ID: {run.id}\n"
+                f"  📍 Node: {run.current_node}\n"
+                f"  💬 {run.human_input_request[:200]}",
+                border_style="yellow",
+            )
+        )
+        console.print(
+            "[dim]Resume with: agency-os workflow resume [run_id] [response][/dim]"
+        )
     else:
-        console.print(f"[red]❌ Workflow failed: {run.checkpoint.get('error', '')}[/red]")
+        console.print(
+            f"[red]❌ Workflow failed: {run.checkpoint.get('error', '')}[/red]"
+        )
 
 
 @workflow.command("runs")
@@ -981,9 +1121,13 @@ def workflow_runs(status: str | None) -> None:
 
     for r in runs:
         s = r["status"]
-        icon = {"completed": "✅", "running": "🟢", "paused": "⏸️", "failed": "❌"}.get(s, "⚪")
+        icon = {"completed": "✅", "running": "🟢", "paused": "⏸️", "failed": "❌"}.get(
+            s, "⚪"
+        )
         table.add_row(
-            r["id"], r["workflow"], f"{icon} {s}",
+            r["id"],
+            r["workflow"],
+            f"{icon} {s}",
             str(r["nodes_completed"]),
             f"{r['duration_ms']:.0f}ms",
         )
@@ -1006,6 +1150,7 @@ def workflow_resume(run_id: str, response: str) -> None:
 
 
 # ── Memory Commands ───────────────────────────────────────────
+
 
 @main.group()
 def memory() -> None:
@@ -1048,7 +1193,7 @@ def memory_search(agent_id: str, query: str) -> None:
     results = mm.search_memory(agent_id, query)
 
     if not results:
-        console.print(f"[dim]No relevant memories found.[/dim]")
+        console.print("[dim]No relevant memories found.[/dim]")
         return
 
     table = Table(title=f"🔍 Memory Search: {query}", border_style="yellow")
@@ -1100,16 +1245,19 @@ def memory_stats() -> None:
     mm = get_memory_manager()
     stats = mm.get_stats()
 
-    console.print(Panel(
-        f"[bold]🧠 Memory Stats[/bold]\n\n"
-        f"  📝 Total Memories: {stats['total_memories']}\n"
-        f"  📚 Knowledge Entries: {stats['total_knowledge']}\n"
-        f"  🤖 Agents with Memory: {', '.join(stats['agents_with_memory']) or 'None'}",
-        border_style="magenta",
-    ))
+    console.print(
+        Panel(
+            f"[bold]🧠 Memory Stats[/bold]\n\n"
+            f"  📝 Total Memories: {stats['total_memories']}\n"
+            f"  📚 Knowledge Entries: {stats['total_knowledge']}\n"
+            f"  🤖 Agents with Memory: {', '.join(stats['agents_with_memory']) or 'None'}",
+            border_style="magenta",
+        )
+    )
 
 
 # ── Autonomy Commands ─────────────────────────────────────────
+
 
 @main.group()
 def auto() -> None:
@@ -1125,13 +1273,15 @@ def auto_discover() -> None:
     engine = get_autonomy_engine()
     result = engine.run_cycle(max_tasks=10, dry_run=True)
 
-    console.print(Panel(
-        f"[bold]🧠 Autonomy Discovery[/bold]\n\n"
-        f"  📋 Tasks Found: {result['tasks_found']}\n"
-        f"  📚 Learnings: {result['learnings']}\n"
-        f"  🔍 Mode: Dry Run",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold]🧠 Autonomy Discovery[/bold]\n\n"
+            f"  📋 Tasks Found: {result['tasks_found']}\n"
+            f"  📚 Learnings: {result['learnings']}\n"
+            f"  🔍 Mode: Dry Run",
+            border_style="cyan",
+        )
+    )
 
     if result["results"]:
         table = Table(title="🔍 Discovered Tasks", border_style="blue")
@@ -1145,9 +1295,11 @@ def auto_discover() -> None:
             prio = r["priority"]
             prio_icon = "🔴" if prio >= 8 else "🟡" if prio >= 5 else "🔵"
             table.add_row(
-                r["source"], r.get("studio", "-"),
+                r["source"],
+                r.get("studio", "-"),
                 f"{prio_icon} {prio:.1f}",
-                r["task"][:50], r.get("reason", "")[:40],
+                r["task"][:50],
+                r.get("reason", "")[:40],
             )
         console.print(table)
     else:
@@ -1166,13 +1318,15 @@ def auto_run(max_tasks: int) -> None:
     with console.status("[green]Discovering and executing tasks..."):
         result = engine.run_cycle(max_tasks=max_tasks, dry_run=False)
 
-    console.print(Panel(
-        f"[bold]🧠 Autonomy Cycle Complete[/bold]\n\n"
-        f"  📋 Tasks Found: {result['tasks_found']}\n"
-        f"  ✅ Executed: {result['tasks_executed']}\n"
-        f"  📚 Learnings: {result['learnings']}",
-        border_style="green" if result["tasks_executed"] > 0 else "dim",
-    ))
+    console.print(
+        Panel(
+            f"[bold]🧠 Autonomy Cycle Complete[/bold]\n\n"
+            f"  📋 Tasks Found: {result['tasks_found']}\n"
+            f"  ✅ Executed: {result['tasks_executed']}\n"
+            f"  📚 Learnings: {result['learnings']}",
+            border_style="green" if result["tasks_executed"] > 0 else "dim",
+        )
+    )
 
     for r in result["results"]:
         icon = "✅" if r.get("success") else "❌"
@@ -1187,13 +1341,15 @@ def auto_status() -> None:
     engine = get_autonomy_engine()
     status = engine.get_status()
 
-    console.print(Panel(
-        f"[bold]🧠 Autonomy Engine[/bold]\n\n"
-        f"  📚 Learnings: {status['learnings']}\n"
-        f"  📝 Agent Memories: {status['memory_stats']['total_memories']}\n"
-        f"  📖 Knowledge Items: {status['memory_stats']['total_knowledge']}",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold]🧠 Autonomy Engine[/bold]\n\n"
+            f"  📚 Learnings: {status['learnings']}\n"
+            f"  📝 Agent Memories: {status['memory_stats']['total_memories']}\n"
+            f"  📖 Knowledge Items: {status['memory_stats']['total_knowledge']}",
+            border_style="cyan",
+        )
+    )
 
     if status["top_patterns"]:
         table = Table(title="📊 Top Patterns", border_style="yellow")
@@ -1204,8 +1360,10 @@ def auto_status() -> None:
 
         for p in status["top_patterns"]:
             table.add_row(
-                p["pattern"], p["studio"],
-                f"{p['confidence']:.2f}", str(p["count"]),
+                p["pattern"],
+                p["studio"],
+                f"{p['confidence']:.2f}",
+                str(p["count"]),
             )
         console.print(table)
 
@@ -1229,16 +1387,20 @@ def auto_learn() -> None:
     table.add_column("Confidence", justify="right")
     table.add_column("Count", justify="right")
 
-    for l in learnings:
-        icon = "✅" if l["outcome"] == "success" else "❌"
+    for learning in learnings:
+        icon = "✅" if learning["outcome"] == "success" else "❌"
         table.add_row(
-            l["pattern"], f"{icon} {l['outcome']}",
-            l["studio"], f"{l['confidence']:.2f}", str(l["count"]),
+            learning["pattern"],
+            f"{icon} {learning['outcome']}",
+            learning["studio"],
+            f"{learning['confidence']:.2f}",
+            str(learning["count"]),
         )
     console.print(table)
 
 
 # ── Learning ──────────────────────────────────────────────
+
 
 @main.group()
 def learn():
@@ -1267,19 +1429,23 @@ def learn_analyze(limit: int) -> None:
     table.add_column("Confidence", style="green")
     table.add_column("Action", style="yellow", max_width=40)
 
-    for l in learnings:
+    for learning in learnings:
         table.add_row(
-            l.category,
-            l.insight[:60],
-            f"{l.confidence:.0%}",
-            l.recommended_action[:40],
+            learning.category,
+            learning.insight[:60],
+            f"{learning.confidence:.0%}",
+            learning.recommended_action[:40],
         )
 
     console.print(table)
 
 
 @learn.command("show")
-@click.option("--category", type=click.Choice(["model_perf", "studio_pattern", "failure"]), default=None)
+@click.option(
+    "--category",
+    type=click.Choice(["model_perf", "studio_pattern", "failure"]),
+    default=None,
+)
 @click.option("--limit", default=20)
 def learn_show(category: str | None, limit: int) -> None:
     """📊 Show stored learnings."""
@@ -1289,7 +1455,9 @@ def learn_show(category: str | None, limit: int) -> None:
     learnings = learner.get_learnings(category=category, limit=limit)
 
     if not learnings:
-        console.print("[yellow]No learnings stored yet. Run `agency learn analyze` first.[/yellow]")
+        console.print(
+            "[yellow]No learnings stored yet. Run `agency learn analyze` first.[/yellow]"
+        )
         return
 
     table = Table(title=f"🧠 Stored Learnings ({len(learnings)})")
@@ -1299,19 +1467,20 @@ def learn_show(category: str | None, limit: int) -> None:
     table.add_column("Conf.", style="green")
     table.add_column("Recommendation", style="yellow", max_width=40)
 
-    for l in learnings:
+    for learning in learnings:
         table.add_row(
-            str(l.get("id", "")),
-            l.get("category", ""),
-            l.get("insight", "")[:50],
-            f"{l.get('confidence', 0):.0%}",
-            l.get("recommended_action", "")[:40],
+            str(learning.get("id", "")),
+            learning.get("category", ""),
+            learning.get("insight", "")[:50],
+            f"{learning.get('confidence', 0):.0%}",
+            learning.get("recommended_action", "")[:40],
         )
 
     console.print(table)
 
 
 # ── Audit Trail ──────────────────────────────────────────────
+
 
 @main.group()
 def audit():
@@ -1324,18 +1493,21 @@ def audit():
 def audit_summary(days: int):
     """Show AI usage summary."""
     from kernel.audit_trail import get_audit
+
     a = get_audit()
     s = a.get_summary(days)
 
-    console.print(Panel.fit(
-        f"📋 Calls: {s['total_calls']}  |  "
-        f"🎯 Tokens: {s['total_tokens']:,}  |  "
-        f"💰 Cost: ${s['total_cost_usd']:.4f}\n"
-        f"⏱️  Avg Latency: {s['avg_latency_ms']:.0f}ms  |  "
-        f"✅ Success: {s['success_rate']}%  |  "
-        f"❌ Failures: {s['failures']}",
-        title=f"Audit Summary ({days}d)",
-    ))
+    console.print(
+        Panel.fit(
+            f"📋 Calls: {s['total_calls']}  |  "
+            f"🎯 Tokens: {s['total_tokens']:,}  |  "
+            f"💰 Cost: ${s['total_cost_usd']:.4f}\n"
+            f"⏱️  Avg Latency: {s['avg_latency_ms']:.0f}ms  |  "
+            f"✅ Success: {s['success_rate']}%  |  "
+            f"❌ Failures: {s['failures']}",
+            title=f"Audit Summary ({days}d)",
+        )
+    )
 
 
 @audit.command("costs")
@@ -1344,6 +1516,7 @@ def audit_summary(days: int):
 def audit_costs(days: int, by: str):
     """Show cost breakdown."""
     from kernel.audit_trail import get_audit
+
     a = get_audit()
 
     table = Table(title=f"Cost Breakdown by {by} ({days}d)")
@@ -1364,6 +1537,7 @@ def audit_costs(days: int, by: str):
 def audit_recent(limit: int):
     """Show recent AI calls."""
     from kernel.audit_trail import get_audit
+
     a = get_audit()
     entries = a.get_recent(limit)
 
@@ -1379,9 +1553,12 @@ def audit_recent(limit: int):
         tokens = (e.get("tokens_in", 0) or 0) + (e.get("tokens_out", 0) or 0)
         ok = "✅" if e.get("success") else "❌"
         table.add_row(
-            e.get("studio", ""), e.get("model", ""),
-            f"{tokens:,}", f"${e.get('estimated_cost', 0):.4f}",
-            f"{e.get('latency_ms', 0):.0f}ms", ok,
+            e.get("studio", ""),
+            e.get("model", ""),
+            f"{tokens:,}",
+            f"${e.get('estimated_cost', 0):.4f}",
+            f"{e.get('latency_ms', 0):.0f}ms",
+            ok,
         )
     console.print(table)
 
@@ -1393,6 +1570,7 @@ def audit_recent(limit: int):
 def audit_export(days: int, fmt: str, output: str):
     """Export audit log to JSON or CSV."""
     from kernel.audit_trail import get_audit
+
     a = get_audit()
 
     data = a.export_json(days) if fmt == "json" else a.export_csv(days)
@@ -1407,6 +1585,7 @@ def audit_export(days: int, fmt: str, output: str):
 
 # ── Guardrails ───────────────────────────────────────────────
 
+
 @main.group()
 def guardrail():
     """🛡️ Guardrails — Budget limits, rate limits, content filters"""
@@ -1417,14 +1596,17 @@ def guardrail():
 def guardrail_status():
     """Show guardrail status and usage."""
     from kernel.guardrails import get_guardrails
+
     g = get_guardrails()
     status = g.get_status()
 
-    console.print(Panel.fit(
-        f"🔍 Scopes tracked: {status['scopes_tracked']}\n"
-        f"📊 Budgets configured: {status['budgets_configured']}",
-        title="🛡️ Guardrails Status",
-    ))
+    console.print(
+        Panel.fit(
+            f"🔍 Scopes tracked: {status['scopes_tracked']}\n"
+            f"📊 Budgets configured: {status['budgets_configured']}",
+            title="🛡️ Guardrails Status",
+        )
+    )
 
     if status["usage"]:
         table = Table(title="Usage by Scope")
@@ -1439,8 +1621,11 @@ def guardrail_status():
             pct = u["tokens_pct"]
             pct_style = "red" if pct > 80 else "yellow" if pct > 50 else "green"
             table.add_row(
-                scope, f"{u['tokens_used']:,}", f"{u['tokens_limit']:,}",
-                f"[{pct_style}]{pct}%[/]", f"${u['cost_usd']:.4f}",
+                scope,
+                f"{u['tokens_used']:,}",
+                f"{u['tokens_limit']:,}",
+                f"[{pct_style}]{pct}%[/]",
+                f"${u['cost_usd']:.4f}",
                 str(u["requests"]),
             )
         console.print(table)
@@ -1454,12 +1639,13 @@ def guardrail_status():
 def guardrail_set_budget(scope: str, tokens: int, cost: float, rpm: int):
     """Set budget limits for a scope (studio name or 'global')."""
     from kernel.guardrails import get_guardrails
+
     g = get_guardrails()
     kwargs = {}
     if tokens:
         kwargs["max_tokens_per_day"] = tokens
     if cost:
-        kwargs["max_cost_per_day"] = cost
+        kwargs["max_cost_per_day"] = cost  # type: ignore
     if rpm:
         kwargs["max_requests_per_minute"] = rpm
     g.set_budget(scope, **kwargs)
@@ -1471,6 +1657,7 @@ def guardrail_set_budget(scope: str, tokens: int, cost: float, rpm: int):
 def guardrail_check(text: str):
     """Check text for PII or prompt injection."""
     from kernel.guardrails import get_guardrails
+
     g = get_guardrails()
     result = g.check_content(text)
     if result.allowed:

@@ -8,6 +8,7 @@ Production-safe input handling:
 - Content sanitization
 - Shell command whitelist (not blacklist!)
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ logger = logging.getLogger("agency.validator")
 @dataclass
 class ValidationResult:
     """Result of input validation."""
+
     valid: bool = True
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -85,23 +87,79 @@ STUDIO_INPUT_SCHEMAS: dict[str, dict[str, Any]] = {
 # Shell command whitelist (SAFE commands only)
 SHELL_WHITELIST: set[str] = {
     # Read-only
-    "ls", "cat", "head", "tail", "wc", "grep", "find", "which", "whoami",
-    "pwd", "echo", "date", "uname", "df", "du", "free", "uptime", "env",
-    "printenv", "file", "stat", "tree", "less", "more", "sort", "uniq",
-    "cut", "awk", "sed", "tr", "diff", "comm",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "wc",
+    "grep",
+    "find",
+    "which",
+    "whoami",
+    "pwd",
+    "echo",
+    "date",
+    "uname",
+    "df",
+    "du",
+    "free",
+    "uptime",
+    "env",
+    "printenv",
+    "file",
+    "stat",
+    "tree",
+    "less",
+    "more",
+    "sort",
+    "uniq",
+    "cut",
+    "awk",
+    "sed",
+    "tr",
+    "diff",
+    "comm",
     # Git (read)
-    "git status", "git log", "git branch", "git diff", "git show",
-    "git shortlog", "git remote", "git tag",
+    "git status",
+    "git log",
+    "git branch",
+    "git diff",
+    "git show",
+    "git shortlog",
+    "git remote",
+    "git tag",
     # Git (write — controlled)
-    "git add", "git commit", "git push", "git pull", "git checkout",
-    "git merge", "git stash",
+    "git add",
+    "git commit",
+    "git push",
+    "git pull",
+    "git checkout",
+    "git merge",
+    "git stash",
     # Python/Node
-    "python3", "python", "pip", "pip3", "node", "npm", "npx",
+    "python3",
+    "python",
+    "pip",
+    "pip3",
+    "node",
+    "npm",
+    "npx",
     # Safe system
-    "curl", "wget", "ping", "nslookup", "dig",
-    "mkdir", "touch", "cp", "mv",
+    "curl",
+    "wget",
+    "ping",
+    "nslookup",
+    "dig",
+    "mkdir",
+    "touch",
+    "cp",
+    "mv",
     # Project tools
-    "pytest", "ruff", "black", "mypy", "flake8",
+    "pytest",
+    "ruff",
+    "black",
+    "mypy",
+    "flake8",
 }
 
 # Explicitly blocked patterns (even within whitelisted commands)
@@ -226,7 +284,9 @@ class InputValidator:
         # Check whitelist
         first_cmd = cmd_lower.split()[0] if cmd_lower.split() else ""
         # Also check two-word commands like "git status"
-        two_word = " ".join(cmd_lower.split()[:2]) if len(cmd_lower.split()) >= 2 else ""
+        two_word = (
+            " ".join(cmd_lower.split()[:2]) if len(cmd_lower.split()) >= 2 else ""
+        )
 
         if first_cmd not in SHELL_WHITELIST and two_word not in SHELL_WHITELIST:
             result.valid = False
@@ -234,7 +294,9 @@ class InputValidator:
                 f"Command '{first_cmd}' not in whitelist. "
                 f"Allowed: {sorted(list(SHELL_WHITELIST))[:10]}..."
             )
-            result.warnings.append("Use validate_shell_command() to check before execution")
+            result.warnings.append(
+                "Use validate_shell_command() to check before execution"
+            )
 
         # Pipe chain validation
         if "|" in command:
@@ -268,8 +330,7 @@ class InputValidator:
 
         # Clean old entries
         self._rate_limits[source] = [
-            t for t in self._rate_limits[source]
-            if now - t < self._rate_window
+            t for t in self._rate_limits[source] if now - t < self._rate_window
         ]
 
         if len(self._rate_limits[source]) >= self._rate_max:
@@ -289,10 +350,7 @@ class InputValidator:
 
     def list_schemas(self) -> dict[str, str]:
         """List all studio schemas."""
-        return {
-            name: schema["description"]
-            for name, schema in self._schemas.items()
-        }
+        return {name: schema["description"] for name, schema in self._schemas.items()}
 
 
 _validator: InputValidator | None = None

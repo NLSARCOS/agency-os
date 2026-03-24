@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Mission Engine
+Agency OS v5.0 — Mission Engine
 
 DAG-based mission execution with crew assembly, agent delegation,
 tool execution, and checkpoint/resume. Full lifecycle:
@@ -8,6 +8,7 @@ QUEUED → ACTIVE → RUNNING → REVIEW → DONE/FAILED
 
 Inspired by LangGraph state machines + CrewAI crew patterns.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,11 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from kernel.config import get_config
-from kernel.state_manager import MissionStatus, TaskStatus, get_state
+from kernel.state_manager import MissionStatus, get_state
 from kernel.task_router import TaskRouter
 from kernel.event_bus import Event, get_event_bus
 from kernel.agent_manager import AgentManager, get_agent_manager
-from kernel.tool_executor import get_tool_executor
 
 logger = logging.getLogger("agency.mission")
 
@@ -33,6 +33,7 @@ logger = logging.getLogger("agency.mission")
 @dataclass
 class MissionStep:
     """A single step in a mission's execution DAG."""
+
     id: str
     name: str
     agent: str
@@ -74,6 +75,7 @@ class MissionEngine:
 
     def auto_discover_studios(self) -> None:
         from studios.base_studio import load_all_studios
+
         for name, studio in load_all_studios().items():
             self.register_studio(name, studio)
 
@@ -101,8 +103,10 @@ class MissionEngine:
         meta = metadata or {}
         meta["routing_confidence"] = confidence
         mission_id = self.state.create_mission(
-            name=name, description=description,
-            studio=studio, priority=priority,
+            name=name,
+            description=description,
+            studio=studio,
+            priority=priority,
             metadata=meta,
         )
 
@@ -113,19 +117,26 @@ class MissionEngine:
 
         logger.info(
             "Mission #%d submitted → %s (confidence: %.0f%%) crew: %s",
-            mission_id, studio, confidence * 100, crew,
+            mission_id,
+            studio,
+            confidence * 100,
+            crew,
         )
 
         # Emit event
         bus = get_event_bus()
-        bus.publish_sync(Event(
-            type="mission.submitted",
-            payload={
-                "mission_id": mission_id, "name": name,
-                "studio": studio, "crew": crew,
-                "confidence": confidence,
-            },
-        ))
+        bus.publish_sync(
+            Event(
+                type="mission.submitted",
+                payload={
+                    "mission_id": mission_id,
+                    "name": name,
+                    "studio": studio,
+                    "crew": crew,
+                    "confidence": confidence,
+                },
+            )
+        )
 
         self.state.log_event(
             "mission_submitted",
@@ -154,17 +165,23 @@ class MissionEngine:
 
         logger.info(
             "Executing mission #%d: %s → %s (attempt %d/%d)",
-            mission_id, name, studio, _retry + 1, MAX_RETRIES + 1,
+            mission_id,
+            name,
+            studio,
+            _retry + 1,
+            MAX_RETRIES + 1,
         )
         # Transition: QUEUED → ACTIVE → RUNNING
         self.state.update_mission_status(mission_id, MissionStatus.ACTIVE)
         self.state.update_mission_status(mission_id, MissionStatus.RUNNING)
 
         bus = get_event_bus()
-        bus.publish_sync(Event(
-            type="mission.started",
-            payload={"mission_id": mission_id, "studio": studio},
-        ))
+        bus.publish_sync(
+            Event(
+                type="mission.started",
+                payload={"mission_id": mission_id, "studio": studio},
+            )
+        )
 
         start = time.monotonic()
         result: dict[str, Any] = {}
@@ -177,9 +194,7 @@ class MissionEngine:
             step_results = self._execute_dag(mission_id, steps)
 
             # Collect results
-            success = all(
-                s["status"] == "completed" for s in step_results.values()
-            )
+            success = all(s["status"] == "completed" for s in step_results.values())
             result_text = json.dumps(step_results, indent=2, default=str)
 
             # Transition: RUNNING → REVIEW → DONE/FAILED
@@ -203,18 +218,22 @@ class MissionEngine:
                 "status": final_status.value,
             }
 
-            bus.publish_sync(Event(
-                type="mission.completed" if success else "mission.failed",
-                payload={
-                    "mission_id": mission_id,
-                    "status": final_status.value,
-                    "duration_ms": duration,
-                },
-            ))
+            bus.publish_sync(
+                Event(
+                    type="mission.completed" if success else "mission.failed",
+                    payload={
+                        "mission_id": mission_id,
+                        "status": final_status.value,
+                        "duration_ms": duration,
+                    },
+                )
+            )
 
         except Exception as e:
             error_msg = f"{e}\n{traceback.format_exc()}"
-            logger.error("Mission #%d failed (attempt %d): %s", mission_id, _retry + 1, e)
+            logger.error(
+                "Mission #%d failed (attempt %d): %s", mission_id, _retry + 1, e
+            )
 
             # ── Auto-retry with exponential backoff ──
             self._running_missions.discard(mission_id)
@@ -222,7 +241,10 @@ class MissionEngine:
                 delay = 2 ** (_retry + 1)  # 2s, 4s
                 logger.info(
                     "Retrying mission #%d in %ds (attempt %d/%d)",
-                    mission_id, delay, _retry + 2, MAX_RETRIES + 1,
+                    mission_id,
+                    delay,
+                    _retry + 2,
+                    MAX_RETRIES + 1,
                 )
                 time.sleep(delay)
                 self.state.update_mission_status(
@@ -249,8 +271,10 @@ class MissionEngine:
 
         # Log KPIs
         self.state.log_kpi(
-            studio, "mission_duration_ms",
-            result.get("duration_ms", 0), "ms",
+            studio,
+            "mission_duration_ms",
+            result.get("duration_ms", 0),
+            "ms",
         )
         self.state.log_event(
             "mission_completed" if result.get("success") else "mission_failed",
@@ -295,7 +319,11 @@ class MissionEngine:
             meta = {}
             if mission and mission.get("metadata"):
                 try:
-                    meta = json.loads(mission["metadata"]) if isinstance(mission["metadata"], str) else mission["metadata"]
+                    meta = (
+                        json.loads(mission["metadata"])
+                        if isinstance(mission["metadata"], str)
+                        else mission["metadata"]
+                    )
                 except (json.JSONDecodeError, TypeError):
                     meta = {}
 
@@ -316,7 +344,10 @@ class MissionEngine:
                     # Not all done yet — stay silent, just log
                     logger.info(
                         "Mission #%d done (%d/%d for objective %s) — waiting for batch",
-                        mission_id, done, total, objective_id[:8],
+                        mission_id,
+                        done,
+                        total,
+                        objective_id[:8],
                     )
                     return
 
@@ -334,6 +365,7 @@ class MissionEngine:
     ) -> None:
         """Compact notification for a single standalone mission."""
         from kernel.notifier import get_notifier, NotificationPriority
+
         notifier = get_notifier()
         _es = self.cfg.language == "es"
         success = result.get("success", False)
@@ -343,7 +375,8 @@ class MissionEngine:
                 title=f"✅ #{mission_id} | {studio.upper()}",
                 message=f"{name[:60]}\n⏱ {result.get('duration_ms', 0):.0f}ms",
                 priority=NotificationPriority.NORMAL,
-                source="mission_engine", category="task",
+                source="mission_engine",
+                category="task",
                 data={"mission_id": mission_id, "studio": studio},
             )
         else:
@@ -351,7 +384,8 @@ class MissionEngine:
                 title=f"❌ #{mission_id} | {studio.upper()}",
                 message=f"{name[:60]}\n{result.get('error', '?')[:100]}",
                 priority=NotificationPriority.HIGH,
-                source="mission_engine", category="error",
+                source="mission_engine",
+                category="error",
                 data={"mission_id": mission_id, "studio": studio},
             )
 
@@ -360,6 +394,7 @@ class MissionEngine:
     ) -> None:
         """Send ONE consolidated notification for a completed objective."""
         from kernel.notifier import get_notifier, NotificationPriority
+
         notifier = get_notifier()
         _es = self.cfg.language == "es"
 
@@ -394,13 +429,17 @@ class MissionEngine:
             title=title,
             message=message,
             priority=NotificationPriority.NORMAL,
-            source="mission_engine", category="objective",
+            source="mission_engine",
+            category="objective",
             data={"objective_id": objective_id, "total": total, "succeeded": succeeded},
         )
 
         logger.info(
             "Objective %s complete: %d/%d succeeded across %s",
-            objective_id[:8], succeeded, total, studios,
+            objective_id[:8],
+            succeeded,
+            total,
+            studios,
         )
 
     def _callback_openclaw(
@@ -409,6 +448,7 @@ class MissionEngine:
         """Report mission result back to OpenClaw for autonomous feedback."""
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
 
             # Collect artifact paths from step results
@@ -422,7 +462,7 @@ class MissionEngine:
                 content = step_data.get("content", "")
                 if content:
                     # Strip JSON noise, keep meaningful text
-                    clean = content.replace('\n', ' ').strip()[:200]
+                    clean = content.replace("\n", " ").strip()[:200]
                     output_parts.append(f"[{step_id}] {clean}")
             output_summary = " | ".join(output_parts)[:300]
 
@@ -471,16 +511,16 @@ class MissionEngine:
                 name="Intake & Analysis",
                 agent=lead_agent,
                 task=f"Analyze this mission and define its scope:\n"
-                     f"Mission: {name}\nDescription: {description}\n"
-                     f"Studio: {studio}\n"
-                     f"Provide a clear intake analysis with objectives.",
+                f"Mission: {name}\nDescription: {description}\n"
+                f"Studio: {studio}\n"
+                f"Provide a clear intake analysis with objectives.",
             ),
             MissionStep(
                 id="plan",
                 name="Plan & Strategy",
                 agent=lead_agent,
                 task=f"Based on the intake analysis, create a detailed "
-                     f"execution plan for: {name}",
+                f"execution plan for: {name}",
                 depends_on=["intake"],
             ),
             MissionStep(
@@ -488,38 +528,48 @@ class MissionEngine:
                 name="Execute",
                 agent=lead_agent,
                 task=f"Execute the plan for: {name}\n"
-                     f"Use available tools to produce real deliverables.",
+                f"Use available tools to produce real deliverables.",
                 depends_on=["plan"],
-                tools=["shell", "read_file", "write_file", "http_request",
-                        "search_web", "scrape_url"],
+                tools=[
+                    "shell",
+                    "read_file",
+                    "write_file",
+                    "http_request",
+                    "search_web",
+                    "scrape_url",
+                ],
             ),
         ]
 
         # Add specialist steps if crew has multiple agents
         if len(crew) > 1:
             for specialist in crew[1:]:
-                steps.append(MissionStep(
-                    id=f"specialist_{specialist}",
-                    name=f"Specialist: {specialist}",
-                    agent=specialist,
-                    task=f"Contribute your specialized expertise to: {name}\n"
-                         f"Review the lead agent's work and enhance it.",
-                    depends_on=["execute"],
-                ))
+                steps.append(
+                    MissionStep(
+                        id=f"specialist_{specialist}",
+                        name=f"Specialist: {specialist}",
+                        agent=specialist,
+                        task=f"Contribute your specialized expertise to: {name}\n"
+                        f"Review the lead agent's work and enhance it.",
+                        depends_on=["execute"],
+                    )
+                )
 
         # Review step
         review_deps = ["execute"]
         if len(crew) > 1:
             review_deps.extend(f"specialist_{s}" for s in crew[1:])
 
-        steps.append(MissionStep(
-            id="review",
-            name="Review & Quality Check",
-            agent=lead_agent,
-            task=f"Review all deliverables for: {name}\n"
-                 f"Verify quality, completeness, and accuracy.",
-            depends_on=review_deps,
-        ))
+        steps.append(
+            MissionStep(
+                id="review",
+                name="Review & Quality Check",
+                agent=lead_agent,
+                task=f"Review all deliverables for: {name}\n"
+                f"Verify quality, completeness, and accuracy.",
+                depends_on=review_deps,
+            )
+        )
 
         return steps
 
@@ -537,9 +587,9 @@ class MissionEngine:
         Steps with no unmet dependencies run in order.
         Includes global timeout and OpenClaw progress reporting.
         """
-        step_map = {s.id: s for s in steps}
+        {s.id: s for s in steps}
         results: dict[str, dict] = {}
-        completed = set()
+        completed = set()  # type: ignore
         dag_start = time.monotonic()
 
         max_iterations = len(steps) * 2  # Safety limit
@@ -550,7 +600,8 @@ class MissionEngine:
             if (time.monotonic() - dag_start) > self.DAG_TIMEOUT_SECONDS:
                 logger.error(
                     "Mission #%d DAG timed out after %ds",
-                    mission_id, self.DAG_TIMEOUT_SECONDS,
+                    mission_id,
+                    self.DAG_TIMEOUT_SECONDS,
                 )
                 remaining = [s.id for s in steps if s.id not in completed]
                 for sid in remaining:
@@ -594,7 +645,9 @@ class MissionEngine:
                 # Execute step
                 logger.info(
                     "Mission #%d step '%s' → agent: %s",
-                    mission_id, step.name, step.agent,
+                    mission_id,
+                    step.name,
+                    step.agent,
                 )
 
                 # Build context from previous step results
@@ -603,9 +656,7 @@ class MissionEngine:
                     dep_result = results.get(dep_id, {})
                     content = dep_result.get("content", "")
                     if content:
-                        context_parts.append(
-                            f"[{dep_id}] {content[:500]}"
-                        )
+                        context_parts.append(f"[{dep_id}] {content[:500]}")
                 context = "\n\n".join(context_parts)
 
                 # Execute via agent manager
@@ -615,7 +666,7 @@ class MissionEngine:
                     task=step.task,
                     context=context,
                     tools_enabled=bool(step.tools),
-                    studio=self.state.get_mission(mission_id).get("studio", "dev"),
+                    studio=self.state.get_mission(mission_id).get("studio", "dev"),  # type: ignore
                 )
 
                 step.status = "completed" if step_result.get("success") else "failed"
@@ -623,9 +674,7 @@ class MissionEngine:
 
                 # Extract file artifacts from agent response
                 content = step_result.get("content", "")
-                artifacts = self._extract_file_artifacts(
-                    mission_id, step.id, content
-                )
+                artifacts = self._extract_file_artifacts(mission_id, step.id, content)
 
                 results[step.id] = {
                     "status": step.status,
@@ -652,7 +701,7 @@ class MissionEngine:
                 # Create task record
                 task_id = self.state.create_task(
                     name=f"[{step.id}] {step.name}",
-                    studio=self.state.get_mission(mission_id).get("studio", ""),
+                    studio=self.state.get_mission(mission_id).get("studio", ""),  # type: ignore
                     mission_id=mission_id,
                     input_data=step.task[:500],
                 )
@@ -669,7 +718,8 @@ class MissionEngine:
                 remaining = [s.id for s in steps if s.id not in completed]
                 logger.error(
                     "Mission #%d DAG deadlock. Remaining: %s",
-                    mission_id, remaining,
+                    mission_id,
+                    remaining,
                 )
                 for sid in remaining:
                     results[sid] = {
@@ -702,19 +752,34 @@ class MissionEngine:
         # Pattern: ```lang filename="name" or ```lang # name
         code_block_pattern = re.compile(
             r'```(\w+)(?:\s+(?:filename[=:]"?([^"\n]+)"?|#\s*(\S+)))?\s*\n'
-            r'(.*?)'
-            r'\n```',
+            r"(.*?)"
+            r"\n```",
             re.DOTALL,
         )
 
         # Language → extension map
         ext_map = {
-            "html": ".html", "css": ".css", "javascript": ".js", "js": ".js",
-            "typescript": ".ts", "ts": ".ts", "python": ".py", "py": ".py",
-            "json": ".json", "yaml": ".yaml", "yml": ".yaml",
-            "markdown": ".md", "md": ".md", "sql": ".sql",
-            "shell": ".sh", "bash": ".sh", "tsx": ".tsx", "jsx": ".jsx",
-            "go": ".go", "rust": ".rs", "java": ".java",
+            "html": ".html",
+            "css": ".css",
+            "javascript": ".js",
+            "js": ".js",
+            "typescript": ".ts",
+            "ts": ".ts",
+            "python": ".py",
+            "py": ".py",
+            "json": ".json",
+            "yaml": ".yaml",
+            "yml": ".yaml",
+            "markdown": ".md",
+            "md": ".md",
+            "sql": ".sql",
+            "shell": ".sh",
+            "bash": ".sh",
+            "tsx": ".tsx",
+            "jsx": ".jsx",
+            "go": ".go",
+            "rust": ".rs",
+            "java": ".java",
         }
 
         block_idx = 0
@@ -744,7 +809,7 @@ class MissionEngine:
 
         # Also check for <!-- filename: X --> patterns before code blocks
         inline_pattern = re.compile(
-            r'<!--\s*filename:\s*(\S+)\s*-->\s*\n```\w*\n(.*?)\n```',
+            r"<!--\s*filename:\s*(\S+)\s*-->\s*\n```\w*\n(.*?)\n```",
             re.DOTALL,
         )
         for match in inline_pattern.finditer(content):
@@ -764,7 +829,9 @@ class MissionEngine:
         if artifacts:
             logger.info(
                 "Mission #%d step '%s': %d file artifacts saved",
-                mission_id, step_id, len(artifacts),
+                mission_id,
+                step_id,
+                len(artifacts),
             )
 
         return artifacts
@@ -794,7 +861,8 @@ class MissionEngine:
         studios_active = [m["studio"] for m in promoted]
         logger.info(
             "🚀 Parallel cycle: %d studios active — %s",
-            len(promoted), ", ".join(studios_active),
+            len(promoted),
+            ", ".join(studios_active),
         )
 
         # ── Progress Notification (Silent Log Only) ──────────────
@@ -806,8 +874,7 @@ class MissionEngine:
         # Execute all missions concurrently (each studio uses its own model)
         loop = asyncio.get_event_loop()
         tasks = [
-            loop.run_in_executor(None, self.execute_mission, m["id"])
-            for m in promoted
+            loop.run_in_executor(None, self.execute_mission, m["id"]) for m in promoted
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -818,23 +885,23 @@ class MissionEngine:
             if isinstance(result, Exception):
                 logger.error("Studio %s failed: %s", studio, result)
                 cycle_results[studio] = {
-                    "success": False, "error": str(result),
+                    "success": False,
+                    "error": str(result),
                     "mission_id": mission["id"],
                 }
             else:
-                cycle_results[studio] = result
+                cycle_results[studio] = result  # type: ignore
 
         # ── Wave Handoff: inject results into dependent missions ──
-        completed_studios = [
-            s for s, r in cycle_results.items() if r.get("success")
-        ]
+        completed_studios = [s for s, r in cycle_results.items() if r.get("success")]
         if completed_studios:
             self._inject_wave_context(completed_studios, cycle_results)
 
         succeeded = sum(1 for r in cycle_results.values() if r.get("success"))
         logger.info(
             "Parallel cycle done: %d/%d studios succeeded",
-            succeeded, len(cycle_results),
+            succeeded,
+            len(cycle_results),
         )
 
         self.state.log_event(
@@ -876,7 +943,7 @@ class MissionEngine:
                 rows = self.state._conn.execute(
                     "SELECT id, name, studio, status, result, metadata FROM missions "
                     "WHERE metadata LIKE ?",
-                    (f'%{objective[:50]}%',),
+                    (f"%{objective[:50]}%",),
                 ).fetchall()
 
             if not rows:
@@ -891,9 +958,7 @@ class MissionEngine:
             # All missions for this objective are complete → generate report
             self._generate_consolidated_report(objective, rows)
 
-    def _generate_consolidated_report(
-        self, objective: str, missions: list
-    ) -> None:
+    def _generate_consolidated_report(self, objective: str, missions: list) -> None:
         """Generate ONE final report for a completed objective."""
         try:
             output_dir = get_config().root / "data" / "outputs"
@@ -907,18 +972,18 @@ class MissionEngine:
             _es = self.cfg.language == "es"
             lines = [
                 f"# 📋 {'Objetivo Completado' if _es else 'Objective Complete'}: {objective}",
-                f"",
+                "",
                 f"**{'Resultado' if _es else 'Result'}:** {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}"
                 + (f" | {failed} {'fallaron' if _es else 'failed'}" if failed else ""),
-                f"",
-                f"---",
-                f"",
+                "",
+                "---",
+                "",
             ]
 
             for m in missions:
                 status_icon = "✅" if m["status"] == "done" else "❌"
                 lines.append(f"## {status_icon} [{m['studio'].upper()}] {m['name']}")
-                lines.append(f"")
+                lines.append("")
                 result_text = m.get("result", "")
                 if result_text:
                     # Extract content from result JSON
@@ -940,6 +1005,7 @@ class MissionEngine:
 
             # Save report
             import hashlib
+
             obj_hash = hashlib.md5(objective.encode()).hexdigest()[:8]
             report_file = output_dir / f"objective_{obj_hash}.md"
             report_file.write_text("\n".join(lines), encoding="utf-8")
@@ -972,13 +1038,14 @@ class MissionEngine:
             # Send ONE consolidated Telegram notification
             try:
                 from kernel.notifier import Notifier, NotificationPriority
+
                 notifier = Notifier()
-                studios_list = ", ".join(
-                    m["studio"].upper() for m in missions
-                )
+                studios_list = ", ".join(m["studio"].upper() for m in missions)
                 _es = self.cfg.language == "es"
                 notifier.notify(
-                    title="📋 ¡Objetivo Completado!" if _es else "📋 Objective Complete!",
+                    title="📋 ¡Objetivo Completado!"
+                    if _es
+                    else "📋 Objective Complete!",
                     message=(
                         f"**{objective[:100]}**\n\n"
                         f"✅ {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}\n"
@@ -999,6 +1066,7 @@ class MissionEngine:
             # Report objective completion to OpenClaw
             try:
                 from kernel.openclaw_bridge import get_openclaw
+
                 oc = get_openclaw()
                 studios_used = list(set(m["studio"] for m in missions))
                 oc.report_objective_complete(
@@ -1058,7 +1126,9 @@ class MissionEngine:
                         )
 
             if context_parts:
-                context_block = "\n\n--- Previous Studio Results ---\n" + "\n\n".join(context_parts)
+                context_block = "\n\n--- Previous Studio Results ---\n" + "\n\n".join(
+                    context_parts
+                )
                 new_desc = row["description"] + context_block
 
                 with self.state._lock:
@@ -1070,7 +1140,8 @@ class MissionEngine:
 
                 logger.info(
                     "Wave handoff: injected %s context into mission #%d",
-                    ", ".join(newly_resolved), row["id"],
+                    ", ".join(newly_resolved),
+                    row["id"],
                 )
 
     # ── Status ────────────────────────────────────────────────

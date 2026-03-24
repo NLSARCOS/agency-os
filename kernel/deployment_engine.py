@@ -3,7 +3,6 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from kernel.notifier import NotificationPriority, get_notifier
 
@@ -46,14 +45,18 @@ class DeploymentEngine:
             providers.append("aws")
         return providers
 
-    def deploy(self, project_path: str, force_provider: str | None = None) -> DeploymentResult:
+    def deploy(
+        self, project_path: str, force_provider: str | None = None
+    ) -> DeploymentResult:
         """
         Deploy a project. If force_provider is not provided, it auto-detects
         based on project type (e.g., package.json contents) and available creds.
         """
         path = Path(project_path)
         if not path.exists():
-            return DeploymentResult(False, "unknown", error=f"Path {project_path} not found.")
+            return DeploymentResult(
+                False, "unknown", error=f"Path {project_path} not found."
+            )
 
         providers = self.get_available_providers()
         if not providers:
@@ -62,19 +65,19 @@ class DeploymentEngine:
             )
 
         provider = force_provider or self._detect_best_provider(path, providers)
-        
+
         if provider not in providers:
             return DeploymentResult(
                 False, provider, error=f"Credentials for {provider} not found in .env"
             )
 
         logger.info(f"Starting deployment to {provider.upper()} from {project_path}...")
-        
-        self.notifier.send(
+
+        self.notifier.send(  # type: ignore
             title=f"🚀 Deploying to {provider.upper()}",
             message=f"Starting autonomous deployment for project at `{path.name}`.\n\n"
-                    f"**Target:** {provider}\n"
-                    f"**Status:** Building and pushing...",
+            f"**Target:** {provider}\n"
+            f"**Status:** Building and pushing...",
             source="deployment_engine",
             priority=NotificationPriority.NORMAL,
         )
@@ -89,23 +92,25 @@ class DeploymentEngine:
             elif provider == "aws":
                 result = self._deploy_aws(path)
             else:
-                result = DeploymentResult(False, provider, error="Unsupported provider.")
+                result = DeploymentResult(
+                    False, provider, error="Unsupported provider."
+                )
         except Exception as e:
             result = DeploymentResult(False, provider, error=str(e))
 
         if result.success:
-            self.notifier.send(
+            self.notifier.send(  # type: ignore
                 title=f"✅ Deployed to {provider.upper()}",
                 message=f"Project `{path.name}` successfully deployed!\n\n"
-                        f"**Live URL:** {result.url or 'Check dashboard'}",
+                f"**Live URL:** {result.url or 'Check dashboard'}",
                 source="deployment_engine",
                 priority=NotificationPriority.HIGH,
             )
         else:
-            self.notifier.send(
+            self.notifier.send(  # type: ignore
                 title=f"❌ Deployment Failed ({provider.upper()})",
                 message=f"Failed to deploy `{path.name}`.\n\n"
-                        f"**Error:**\n```\n{result.error[-500:]}\n```",
+                f"**Error:**\n```\n{result.error[-500:]}\n```",
                 source="deployment_engine",
                 priority=NotificationPriority.HIGH,
             )
@@ -118,29 +123,40 @@ class DeploymentEngine:
         if (project_path / "package.json").exists():
             pkg = (project_path / "package.json").read_text()
             if "next" in pkg or "vercel" in pkg:
-                if "vercel" in available: return "vercel"
+                if "vercel" in available:
+                    return "vercel"
             if "nuxt" in pkg or "vue" in pkg or "vite" in pkg:
-                if "netlify" in available: return "netlify"
-                
-        if (project_path / "Dockerfile").exists() or (project_path / "docker-compose.yml").exists():
-            if "vps" in available: return "vps"
-            
+                if "netlify" in available:
+                    return "netlify"
+
+        if (project_path / "Dockerfile").exists() or (
+            project_path / "docker-compose.yml"
+        ).exists():
+            if "vps" in available:
+                return "vps"
+
         # Default to the first available if no strong hint
-        if "vercel" in available: return "vercel"
-        if "vps" in available: return "vps"
+        if "vercel" in available:
+            return "vercel"
+        if "vps" in available:
+            return "vps"
         return available[0]
 
     def _deploy_vercel(self, path: Path) -> DeploymentResult:
         token = os.getenv("VERCEL_TOKEN")
         cmd = ["npx", "vercel", "--prod", "--token", token, "--yes"]
         try:
-            res = subprocess.run(cmd, cwd=str(path), capture_output=True, text=True, timeout=300)
+            res = subprocess.run(
+                cmd, cwd=str(path), capture_output=True, text=True, timeout=300  # type: ignore
+            )
             if res.returncode == 0:
                 # Vercel outputs the URL to stdout/stderr depending on versions.
                 # Usually stdout has the URL on the last line.
-                url = [l for l in res.stdout.splitlines() if "https://" in l]
+                url = [line for line in res.stdout.splitlines() if "https://" in line]
                 final_url = url[-1] if url else "https://vercel.com/dashboard"
-                return DeploymentResult(True, "vercel", url=final_url, output=res.stdout)
+                return DeploymentResult(
+                    True, "vercel", url=final_url, output=res.stdout
+                )
             return DeploymentResult(False, "vercel", error=res.stderr or res.stdout)
         except subprocess.TimeoutExpired:
             return DeploymentResult(False, "vercel", error="Deployment timed out.")
@@ -148,10 +164,16 @@ class DeploymentEngine:
     def _deploy_netlify(self, path: Path) -> DeploymentResult:
         token = os.getenv("NETLIFY_AUTH_TOKEN")
         cmd = ["npx", "netlify-cli", "deploy", "--prod", "--auth", token]
-        res = subprocess.run(cmd, cwd=str(path), capture_output=True, text=True)
+        res = subprocess.run(cmd, cwd=str(path), capture_output=True, text=True)  # type: ignore
         if res.returncode == 0:
-            url = [l for l in res.stdout.splitlines() if "Website Draft URL:" in l or "Website URL:" in l]
-            final_url = url[0].split("URL:")[-1].strip() if url else "https://app.netlify.com"
+            url = [
+                line
+                for line in res.stdout.splitlines()
+                if "Website Draft URL:" in line or "Website URL:" in line
+            ]
+            final_url = (
+                url[0].split("URL:")[-1].strip() if url else "https://app.netlify.com"
+            )
             return DeploymentResult(True, "netlify", url=final_url, output=res.stdout)
         return DeploymentResult(False, "netlify", error=res.stderr or res.stdout)
 
@@ -159,16 +181,27 @@ class DeploymentEngine:
         user = os.getenv("DEPLOY_VPS_USER", "root")
         host = os.getenv("DEPLOY_VPS_HOST")
         key = os.getenv("DEPLOY_VPS_KEY_PATH", "~/.ssh/id_rsa")
-        
+
         remote_dir = f"/var/www/{path.name}"
         target = f"{user}@{host}"
-        
+
         # 1. Sync files via rsync
-        scp_cmd = ["rsync", "-avz", "--exclude", "node_modules", "--exclude", ".git", "-e", f"ssh -i {key} -o StrictHostKeyChecking=no", f"{path}/", f"{target}:{remote_dir}"]
+        scp_cmd = [
+            "rsync",
+            "-avz",
+            "--exclude",
+            "node_modules",
+            "--exclude",
+            ".git",
+            "-e",
+            f"ssh -i {key} -o StrictHostKeyChecking=no",
+            f"{path}/",
+            f"{target}:{remote_dir}",
+        ]
         res = subprocess.run(scp_cmd, capture_output=True, text=True)
         if res.returncode != 0:
             return DeploymentResult(False, "vps", error=f"Rsync failed: {res.stderr}")
-            
+
         # 2. Start service
         ssh_cmd = ["ssh", "-i", key, "-o", "StrictHostKeyChecking=no", target]
         if (path / "docker-compose.yml").exists():
@@ -177,16 +210,22 @@ class DeploymentEngine:
             startup = f"cd {remote_dir} && npm install --production && pm2 start npm --name {path.name} -- start"
         else:
             startup = f"cd {remote_dir} && echo 'Deployed successfully. Manual start required.'"
-            
+
         ssh_res = subprocess.run(ssh_cmd + [startup], capture_output=True, text=True)
-        
+
         if ssh_res.returncode == 0:
-            return DeploymentResult(True, "vps", url=f"http://{host}", output=ssh_res.stdout)
-        return DeploymentResult(False, "vps", error=f"SSH Startup failed: {ssh_res.stderr}")
+            return DeploymentResult(
+                True, "vps", url=f"http://{host}", output=ssh_res.stdout
+            )
+        return DeploymentResult(
+            False, "vps", error=f"SSH Startup failed: {ssh_res.stderr}"
+        )
 
     def _deploy_aws(self, path: Path) -> DeploymentResult:
         # Placeholder for AWS standard generic deployment
-        return DeploymentResult(True, "aws", url="AWS Console", output="AWS sync executed (Mock).")
+        return DeploymentResult(
+            True, "aws", url="AWS Console", output="AWS sync executed (Mock)."
+        )
 
 
 _engine: DeploymentEngine | None = None

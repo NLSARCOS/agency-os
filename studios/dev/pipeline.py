@@ -12,9 +12,9 @@ This studio BUILDS, not just suggests:
 Uses: .agent/agents/backend-specialist.md, frontend-specialist.md
 Skills: clean-code, api-patterns, testing-patterns, architecture
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from studios.base_studio import BaseStudio
@@ -40,10 +40,20 @@ class Studio(BaseStudio):
             task_type = "deploy"
         elif any(w in task_lower for w in ["test", "qa", "coverage"]):
             task_type = "testing"
-        elif any(w in task_lower for w in [
-            "web", "landing", "page", "site", "website", "app",
-            "dashboard", "portal", "frontend"
-        ]):
+        elif any(
+            w in task_lower
+            for w in [
+                "web",
+                "landing",
+                "page",
+                "site",
+                "website",
+                "app",
+                "dashboard",
+                "portal",
+                "frontend",
+            ]
+        ):
             task_type = "webapp"
 
         # Detect target project dir
@@ -115,7 +125,9 @@ class Studio(BaseStudio):
             "skills": self.skills_refs,
         }
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         """Execute the dev pipeline — CREATE REAL FILES, not just markdown."""
         task_type = plan["type"]
         project_dir = plan.get("project_dir", "")
@@ -156,13 +168,24 @@ class Studio(BaseStudio):
             "kpis": [
                 {"name": "tasks_completed", "value": 1, "unit": "count"},
                 {"name": f"{plan['type']}_completed", "value": 1, "unit": "count"},
-                {"name": "files_created", "value": len(action_result.get("files_created", [])), "unit": "count"},
-                {"name": "commands_run", "value": len(action_result.get("commands_run", [])), "unit": "count"},
+                {
+                    "name": "files_created",
+                    "value": len(action_result.get("files_created", [])),
+                    "unit": "count",
+                },
+                {
+                    "name": "commands_run",
+                    "value": len(action_result.get("commands_run", [])),
+                    "unit": "count",
+                },
             ],
         }
 
     def _build_executor_prompt(
-        self, plan: dict, git_context: str, skills_context: str,
+        self,
+        plan: dict,
+        git_context: str,
+        skills_context: str,
     ) -> str:
         """Build prompt that instructs AI to output actionable code with file paths."""
         task_type = plan["type"]
@@ -210,10 +233,10 @@ IMPORTANT: Include COMPLETE file contents, not snippets. Every code block MUST h
             f"## Execution Steps\n"
             + "\n".join(f"- {s}" for s in plan["steps"])
             + f"\n\n## Git Context\n{git_context}\n\n"
-              f"## Skills Context\n{skills_context[:1000]}\n\n"
-              f"{format_instructions}\n\n"
-              f"Now execute this task. Create ALL necessary files with COMPLETE content. "
-              f"Include build/install commands as bash blocks."
+            f"## Skills Context\n{skills_context[:1000]}\n\n"
+            f"{format_instructions}\n\n"
+            f"Now execute this task. Create ALL necessary files with COMPLETE content. "
+            f"Include build/install commands as bash blocks."
         )
 
         return prompt

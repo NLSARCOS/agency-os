@@ -21,16 +21,15 @@ Events that trigger notifications:
   - Quality gate failed → "The output wasn't good enough, retrying"
   - Approval needed → "I need your OK to proceed"
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -43,10 +42,10 @@ logger = logging.getLogger("agency.notifier")
 
 
 class NotificationPriority(str, Enum):
-    LOW = "low"           # Info: task completed, stats update
-    NORMAL = "normal"     # Update: phase completed, PR created
-    HIGH = "high"         # Action needed: approval required
-    URGENT = "urgent"     # Problem: quality failure, error
+    LOW = "low"  # Info: task completed, stats update
+    NORMAL = "normal"  # Update: phase completed, PR created
+    HIGH = "high"  # Action needed: approval required
+    URGENT = "urgent"  # Problem: quality failure, error
 
 
 class NotificationChannel(str, Enum):
@@ -61,6 +60,7 @@ class NotificationChannel(str, Enum):
 @dataclass
 class Notification:
     """A message from Agency OS to the owner."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:10])
     title: str = ""
     message: str = ""
@@ -97,8 +97,8 @@ class Notifier:
         """Auto-detect which outbound channels are available."""
         self._channels = {
             "console": True,  # Always available
-            "file": True,     # Always available
-            "event": True,    # Always available
+            "file": True,  # Always available
+            "event": True,  # Always available
             "telegram": bool(
                 os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")
             ),
@@ -121,7 +121,7 @@ class Notifier:
         }
         for event_type, handler in subscriptions.items():
             try:
-                self._bus.subscribe(event_type, handler)
+                self._bus.subscribe(event_type, handler)  # type: ignore
             except Exception:
                 pass  # Event bus may not support all features
 
@@ -204,17 +204,20 @@ class Notifier:
         filepath = inbox_dir / filename
 
         filepath.write_text(
-            json.dumps({
-                "id": notif.id,
-                "title": notif.title,
-                "message": notif.message,
-                "priority": notif.priority.value,
-                "source": notif.source,
-                "category": notif.category,
-                "data": notif.data,
-                "read": notif.read,
-                "created_at": notif.created_at,
-            }, indent=2),
+            json.dumps(
+                {
+                    "id": notif.id,
+                    "title": notif.title,
+                    "message": notif.message,
+                    "priority": notif.priority.value,
+                    "source": notif.source,
+                    "category": notif.category,
+                    "data": notif.data,
+                    "read": notif.read,
+                    "created_at": notif.created_at,
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
 
@@ -243,6 +246,7 @@ class Notifier:
         """Send via OpenClaw/ClawBot for chat-based notification."""
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
             if oc.is_available():
                 oc.ask(
@@ -263,6 +267,7 @@ class Notifier:
         """Push directly to owner's Telegram via Bot API."""
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
 
             icons = {
@@ -281,15 +286,17 @@ class Notifier:
 
     def _send_event(self, notif: Notification) -> None:
         """Publish to internal event bus."""
-        self._bus.publish_sync(Event(
-            type=f"notification.{notif.category or 'general'}",
-            source="notifier",
-            payload={
-                "id": notif.id,
-                "title": notif.title,
-                "priority": notif.priority.value,
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type=f"notification.{notif.category or 'general'}",
+                source="notifier",
+                payload={
+                    "id": notif.id,
+                    "title": notif.title,
+                    "priority": notif.priority.value,
+                },
+            )
+        )
 
     # ── Pre-Built Notification Templates ─────────────────────
 
@@ -332,7 +339,7 @@ class Notifier:
     def evolution_pr(self, pr_url: str, items: int) -> Notification:
         """Notify: self-evolution created a PR."""
         return self.notify(
-            title=f"🧬 Self-improvement PR created",
+            title="🧬 Self-improvement PR created",
             message=f"I analyzed my own code and created {items} improvements.\nPR: {pr_url}",
             priority=NotificationPriority.NORMAL,
             source="self_evolution",
@@ -445,7 +452,7 @@ class Notifier:
     def get_stats(self) -> dict:
         total = len(self._inbox)
         unread = sum(1 for n in self._inbox if not n.read)
-        by_priority = {}
+        by_priority = {}  # type: ignore
         for n in self._inbox:
             by_priority[n.priority.value] = by_priority.get(n.priority.value, 0) + 1
         return {

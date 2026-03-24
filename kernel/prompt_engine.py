@@ -9,6 +9,7 @@ Intelligent prompt compilation and token management:
 - System prompt hashing + dedup
 - Semantic cache for similar prompts
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +19,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from kernel.config import get_config
 
 logger = logging.getLogger("agency.prompt")
 
@@ -48,6 +48,7 @@ CHARS_PER_TOKEN = 3.5
 @dataclass
 class CompiledPrompt:
     """A compiled, optimized prompt ready for sending."""
+
     system: str = ""
     user: str = ""
     system_hash: str = ""
@@ -63,6 +64,7 @@ class CompiledPrompt:
 @dataclass
 class CacheEntry:
     """Cached prompt response."""
+
     prompt_hash: str
     response: str
     tokens_saved: int
@@ -206,7 +208,8 @@ class PromptEngine:
         truncated = False
         if headroom < 0:
             user, truncated = self._truncate_context(
-                user, abs(headroom) + 200  # Extra buffer
+                user,
+                abs(headroom) + 200,  # Extra buffer
             )
             total_tokens = system_tokens + self._estimate_tokens(user)
             headroom = context_window - total_tokens - max_response_tokens
@@ -326,9 +329,7 @@ class PromptEngine:
             prev_empty = is_empty
         return "\n".join(compressed)
 
-    def _truncate_context(
-        self, text: str, tokens_to_remove: int
-    ) -> tuple[str, bool]:
+    def _truncate_context(self, text: str, tokens_to_remove: int) -> tuple[str, bool]:
         """Intelligently truncate context, keeping start and end."""
         chars_to_remove = int(tokens_to_remove * CHARS_PER_TOKEN)
         if chars_to_remove >= len(text):

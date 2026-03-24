@@ -5,6 +5,7 @@ Analytics Studio — Reporting & Insights Pipeline
 Uses: .agent/agents/explorer-agent.md
 Skills: performance-profiling, systematic-debugging
 """
+
 from __future__ import annotations
 
 import json
@@ -83,7 +84,9 @@ class Studio(BaseStudio):
         }
         return {**intake_result, "steps": steps.get(op, steps["report"])}
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         operation = plan["operation"]
 
         # For reports and KPI analysis, use real data from state DB
@@ -113,7 +116,7 @@ class Studio(BaseStudio):
         events = self.state.get_events(limit=20)
 
         report_lines = [
-            f"# 📊 Analytics Report",
+            "# 📊 Analytics Report",
             f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
             "",
             "## Mission Summary",
@@ -135,7 +138,9 @@ class Studio(BaseStudio):
 
         report_lines.append(f"\n## Recent Events ({len(events)} records)")
         for e in events[:10]:
-            report_lines.append(f"- [{e['level']}] {e['event_type']}: {e['message'][:80]}")
+            report_lines.append(
+                f"- [{e['level']}] {e['event_type']}: {e['message'][:80]}"
+            )
 
         output = "\n".join(report_lines)
 

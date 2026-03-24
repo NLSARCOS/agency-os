@@ -3,7 +3,6 @@ import logging
 import os
 import sqlite3
 import time
-from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from kernel.config import get_config
@@ -21,10 +20,10 @@ logger = logging.getLogger("agency.heartbeat")
 class HeartbeatConfig:
     # How often the heartbeat loops to check conditions (seconds)
     tick_interval: int = 60
-    
+
     # Hours between proactive hustle attempts
     hustle_interval_hours: int = 12
-    
+
     # Hours between proactive self-evolution passes
     evolution_interval_hours: int = 24
 
@@ -32,7 +31,7 @@ class HeartbeatConfig:
 class AgencyHeartbeat:
     """
     The 24/7 pulse of Agency OS.
-    
+
     Runs indefinitely in a background thread or event loop.
     Checks the clock and decides:
     - Should I hustle for clients?
@@ -60,8 +59,12 @@ class AgencyHeartbeat:
     def _load_timestamp(self, key: str) -> float:
         try:
             with sqlite3.connect(self._db_path) as conn:
-                conn.execute("CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)")
-                row = conn.execute("SELECT value FROM heartbeat_state WHERE key = ?", (key,)).fetchone()
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)"
+                )
+                row = conn.execute(
+                    "SELECT value FROM heartbeat_state WHERE key = ?", (key,)
+                ).fetchone()
                 return row[0] if row else 0.0
         except Exception:
             return 0.0
@@ -69,8 +72,13 @@ class AgencyHeartbeat:
     def _save_timestamp(self, key: str, value: float) -> None:
         try:
             with sqlite3.connect(self._db_path) as conn:
-                conn.execute("CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)")
-                conn.execute("INSERT OR REPLACE INTO heartbeat_state (key, value) VALUES (?, ?)", (key, value))
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS heartbeat_state (key TEXT PRIMARY KEY, value REAL)"
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO heartbeat_state (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
         except Exception as e:
             logger.warning("Failed to persist %s: %s", key, e)
 
@@ -148,11 +156,15 @@ class AgencyHeartbeat:
         # ── Proactive startup notification ────────────────────
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             get_openclaw().notify_owner(
-                self._msg("activated_title") + "\n" +
-                self._msg("activated_body",
-                          hustle=self.config.hustle_interval_hours,
-                          evolve=self.config.evolution_interval_hours)
+                self._msg("activated_title")
+                + "\n"
+                + self._msg(
+                    "activated_body",
+                    hustle=self.config.hustle_interval_hours,
+                    evolve=self.config.evolution_interval_hours,
+                )
             )
         except Exception:
             pass
@@ -218,7 +230,7 @@ class AgencyHeartbeat:
 
         # 0. Sweep stuck missions (active/running > 2 hours = dead)
         self._sweep_stuck_missions()
-        
+
         # 1. Check if it's time to hustle (Find Clients/Opportunities)
         if now - self.last_hustle > (self.config.hustle_interval_hours * 3600):
             await self._run_hustle_cycle()
@@ -248,22 +260,25 @@ class AgencyHeartbeat:
         """Run autonomy engine every tick — discover and execute proactive tasks."""
         try:
             from kernel.autonomy_engine import AutonomyEngine
+
             if not hasattr(self, "_autonomy_engine"):
                 self._autonomy_engine = AutonomyEngine()
-            
+
             result = self._autonomy_engine.run_cycle(max_tasks=2)
-            
+
             discovered = result.get("discovered", 0)
             executed = result.get("executed", 0)
-            
+
             if discovered > 0 or executed > 0:
                 logger.info(
                     "Autonomy cycle: discovered %d, executed %d tasks",
-                    discovered, executed,
+                    discovered,
+                    executed,
                 )
                 if executed > 0:
                     try:
                         from kernel.openclaw_bridge import get_openclaw
+
                         get_openclaw().notify_owner(
                             f"🤖 Autonomy: executed {executed} proactive tasks"
                         )
@@ -333,6 +348,7 @@ class AgencyHeartbeat:
         ]
         try:
             import sqlite3
+
             conn = sqlite3.connect(self._db_path)
             seeded = 0
             for task in defaults:
@@ -341,8 +357,13 @@ class AgencyHeartbeat:
                         """INSERT OR IGNORE INTO scheduled_tasks
                            (name, prompt, interval_minutes, studio, priority, enabled, created_at)
                            VALUES (?, ?, ?, ?, ?, 1, datetime('now'))""",
-                        (task["name"], task["prompt"], task["interval_minutes"],
-                         task["studio"], task["priority"]),
+                        (
+                            task["name"],
+                            task["prompt"],
+                            task["interval_minutes"],
+                            task["studio"],
+                            task["priority"],
+                        ),
                     )
                     if conn.total_changes:
                         seeded += 1
@@ -360,9 +381,9 @@ class AgencyHeartbeat:
         try:
             # Tell the agency to find business
             res = self._initiative.hustle()
-            
+
             pending = len(res.get("pending_approval", []))
-            
+
             if pending > 0:
                 self._notifier.notify(
                     title=self._msg("hustle_title"),
@@ -379,14 +400,11 @@ class AgencyHeartbeat:
             # The evolution engine checks if the code is messy or if tests are failing
             self._evolution.evolve()
         except Exception as e:
-            logger.error(
-                "Evolution cycle failed: %s", e, exc_info=True
-            )
+            logger.error("Evolution cycle failed: %s", e, exc_info=True)
             try:
                 from kernel.openclaw_bridge import get_openclaw
-                get_openclaw().notify_owner(
-                    f"🚨 Evolution cycle failed: {e}"
-                )
+
+                get_openclaw().notify_owner(f"🚨 Evolution cycle failed: {e}")
             except Exception:
                 pass
 
@@ -395,24 +413,24 @@ class AgencyHeartbeat:
         logger.info("Heartbeat: Running Learning Cycle...")
         try:
             from kernel.mission_learner import get_mission_learner
+
             learner = get_mission_learner()
             learnings = learner.analyze_recent_missions()
             if learnings:
-                logger.info(
-                    "Learning cycle: %d insights extracted", len(learnings)
-                )
+                logger.info("Learning cycle: %d insights extracted", len(learnings))
         except Exception as e:
             logger.error(f"Learning cycle failed: {e}")
 
     async def _run_mission_cycle(self) -> None:
         """Process queued missions — one per studio in parallel.
-        
+
         The orchestrator handles ALL awareness. Individual missions are silent.
         OpenClaw PM receives reports and decides when to notify.
         """
         try:
             if not hasattr(self, "_mission_engine"):
                 from kernel.mission_engine import MissionEngine
+
                 self._mission_engine = MissionEngine()
                 self._mission_engine.auto_discover_studios()
 
@@ -425,7 +443,9 @@ class AgencyHeartbeat:
                 failed = result.get("failed", 0)
                 logger.info(
                     "Mission cycle: %d studios, %d succeeded, %d failed",
-                    studios, succeeded, failed,
+                    studios,
+                    succeeded,
+                    failed,
                 )
         except Exception as e:
             logger.error("Mission cycle failed: %s", e, exc_info=True)
@@ -434,6 +454,7 @@ class AgencyHeartbeat:
         """Mark missions stuck as active/running for too long as failed."""
         try:
             from kernel.state_manager import get_state
+
             state = get_state()
 
             # Running > 30 min or Active > 2 hours = dead
@@ -457,6 +478,7 @@ class AgencyHeartbeat:
                 try:
                     from kernel.openclaw_bridge import get_openclaw
                     import os
+
                     _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
                     get_openclaw().notify_owner(
                         f"🧹 {'Limpiadas' if _es else 'Cleaned'} {len(stuck)} "
@@ -471,6 +493,7 @@ class AgencyHeartbeat:
         """Execute dynamic scheduled tasks from the API-created schedule."""
         try:
             from kernel.state_manager import get_state
+
             state = get_state()
 
             # Check for enabled tasks due for execution
@@ -500,22 +523,29 @@ class AgencyHeartbeat:
                     (f"%{task_name}%",),
                 ).fetchone()
                 if existing and existing["cnt"] > 0:
-                    logger.debug("Scheduled task '%s' skipped — %d still pending", task_name, existing["cnt"])
+                    logger.debug(
+                        "Scheduled task '%s' skipped — %d still pending",
+                        task_name,
+                        existing["cnt"],
+                    )
                     continue
 
                 logger.info("Scheduled task due: %s", task_name)
 
                 try:
                     import json
+
                     mission_id = state.create_mission(
                         name=f"[Scheduled] {task_name}",
                         description=prompt,
                         studio=studio,
                         priority=priority,
-                        metadata=json.dumps({
-                            "source": "scheduled_task",
-                            "task_name": task_name,
-                        }),
+                        metadata=json.dumps(  # type: ignore
+                            {
+                                "source": "scheduled_task",
+                                "task_name": task_name,
+                            }
+                        ),
                     )
 
                     state._conn.execute(
@@ -526,10 +556,14 @@ class AgencyHeartbeat:
 
                     logger.info(
                         "Scheduled task '%s' → mission #%d (studio: %s)",
-                        task_name, mission_id, studio,
+                        task_name,
+                        mission_id,
+                        studio,
                     )
                 except Exception as e:
-                    logger.error("Scheduled task '%s' failed to queue: %s", task_name, e)
+                    logger.error(
+                        "Scheduled task '%s' failed to queue: %s", task_name, e
+                    )
 
         except Exception as e:
             logger.debug("Scheduled tasks check skipped: %s", e)
@@ -547,6 +581,7 @@ class AgencyHeartbeat:
         self._last_token_check = now
         try:
             from kernel.token_refresher import check_and_refresh
+
             result = check_and_refresh()
             if result.get("refreshed", 0) > 0:
                 logger.info("Token refresh: %s", result)
@@ -554,6 +589,7 @@ class AgencyHeartbeat:
                 logger.warning("Token refresh failures: %s", result)
         except Exception as e:
             logger.debug("Token refresh check skipped: %s", e)
+
 
 _heartbeat: AgencyHeartbeat | None = None
 

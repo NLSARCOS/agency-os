@@ -5,6 +5,7 @@ Sales Studio — Outreach & Pipeline
 Uses: .agent/agents/product-owner.md
 Skills: brainstorming, plan-writing
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -24,7 +25,9 @@ class Studio(BaseStudio):
             operation = "closing"
         elif any(w in task_lower for w in ["follow", "followup", "seguimiento"]):
             operation = "followup"
-        elif any(w in task_lower for w in ["proposal", "propuesta", "quote", "cotización"]):
+        elif any(
+            w in task_lower for w in ["proposal", "propuesta", "quote", "cotización"]
+        ):
             operation = "proposal"
         elif any(w in task_lower for w in ["sequence", "cadence", "secuencia"]):
             operation = "sequence"
@@ -81,7 +84,9 @@ class Studio(BaseStudio):
         }
         return {**intake_result, "steps": steps.get(op, steps["outreach"])}
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         prompt = (
             f"## Sales Task — {plan['operation'].upper()}\n"
             f"**Task:** {plan['task']}\n"

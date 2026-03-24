@@ -5,6 +5,7 @@ Creative Studio — Content & Asset Production Pipeline
 Uses: .agent/agents/frontend-specialist.md
 Skills: frontend-design, web-design-guidelines
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -90,7 +91,9 @@ class Studio(BaseStudio):
         }
         return {**intake_result, "steps": steps.get(op, steps["content"])}
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         skills_context = self.get_skill_content("frontend-design")[:800]
 
         prompt = (
@@ -110,6 +113,10 @@ class Studio(BaseStudio):
             "output": output,
             "operation": plan["operation"],
             "kpis": [
-                {"name": f"creative_{plan['operation']}_completed", "value": 1, "unit": "count"},
+                {
+                    "name": f"creative_{plan['operation']}_completed",
+                    "value": 1,
+                    "unit": "count",
+                },
             ],
         }

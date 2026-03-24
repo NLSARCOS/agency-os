@@ -10,7 +10,7 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: google/gemini-2.0-flash-lite-preview-02-05:free
+    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
@@ -21,7 +21,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: google/gemini-2.0-flash-lite-preview-02-05:free
+    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
@@ -32,20 +32,14 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: google/gemini-2.0-flash-lite-preview-02-05:free
+    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
   dev:
-    - name: codex-5.3
-      provider: openclaw
-      tier: openclaw
-    - name: gpt-5.4
-      provider: openclaw
-      tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
-      tier: free
+      tier: fast
 
   abm:
     - name: gpt-5.4
@@ -54,7 +48,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: google/gemini-2.0-flash-lite-preview-02-05:free
+    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free
 
@@ -73,6 +67,6 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: google/gemini-2.0-flash-lite-preview-02-05:free
+    - name: openrouter/qwen/qwen3-coder:free
       provider: openrouter
       tier: free

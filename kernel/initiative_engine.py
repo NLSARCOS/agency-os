@@ -15,6 +15,7 @@ The engine that makes Agency OS HUNT for work:
 This is what separates an agency from a tool.
 A tool waits. An agency HUSTLES.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,6 +34,7 @@ logger = logging.getLogger("agency.initiative")
 @dataclass
 class Opportunity:
     """A proactively identified business opportunity."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:10])
     title: str = ""
     problem: str = ""
@@ -51,6 +53,7 @@ class Opportunity:
 @dataclass
 class Initiative:
     """A full initiative: opportunity → solution → sales effort."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:10])
     opportunity: Opportunity = field(default_factory=Opportunity)
     solution_plan: dict[str, Any] = field(default_factory=dict)
@@ -191,14 +194,16 @@ class InitiativeEngine:
 
         self._opportunities.extend(opportunities)
 
-        self._bus.publish_sync(Event(
-            type="initiative.scan_complete",
-            source="initiative_engine",
-            payload={
-                "opportunities_found": len(opportunities),
-                "scanner": scanner_name or "all",
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="initiative.scan_complete",
+                source="initiative_engine",
+                payload={
+                    "opportunities_found": len(opportunities),
+                    "scanner": scanner_name or "all",
+                },
+            )
+        )
 
         logger.info("Scan found %d opportunities", len(opportunities))
         return opportunities
@@ -207,6 +212,7 @@ class InitiativeEngine:
         """Use AI to identify specific opportunities."""
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
             response = oc.ask(
                 prompt=scanner["prompt"],
@@ -236,7 +242,8 @@ class InitiativeEngine:
     # ── 2. GENERATE SOLUTION PROPOSAL ─────────────────────────
 
     def propose_solution(
-        self, opportunity_id: str,
+        self,
+        opportunity_id: str,
     ) -> Initiative:
         """
         Generate a detailed solution proposal for an opportunity.
@@ -245,7 +252,8 @@ class InitiativeEngine:
         estimated timeline, and pricing.
         """
         opp = next(
-            (o for o in self._opportunities if o.id == opportunity_id), None,
+            (o for o in self._opportunities if o.id == opportunity_id),
+            None,
         )
         if not opp:
             raise ValueError(f"Opportunity {opportunity_id} not found")
@@ -279,15 +287,17 @@ class InitiativeEngine:
         self._initiatives.append(initiative)
         opp.status = "pitched"
 
-        self._bus.publish_sync(Event(
-            type="initiative.proposed",
-            source="initiative_engine",
-            payload={
-                "initiative_id": initiative.id,
-                "opportunity": opp.title[:100],
-                "value": opp.estimated_value,
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="initiative.proposed",
+                source="initiative_engine",
+                payload={
+                    "initiative_id": initiative.id,
+                    "opportunity": opp.title[:100],
+                    "value": opp.estimated_value,
+                },
+            )
+        )
 
         return initiative
 
@@ -295,31 +305,75 @@ class InitiativeEngine:
         """Plan the execution phases for a solution."""
         solution_type = opp.proposed_solution.lower()
 
-        if "landing" in solution_type or "web" in solution_type or "page" in solution_type:
+        if (
+            "landing" in solution_type
+            or "web" in solution_type
+            or "page" in solution_type
+        ):
             return [
-                {"phase": 1, "studio": "creative", "task": "Design and copy", "days": 3},
+                {
+                    "phase": 1,
+                    "studio": "creative",
+                    "task": "Design and copy",
+                    "days": 3,
+                },
                 {"phase": 2, "studio": "dev", "task": "Build and deploy", "days": 5},
                 {"phase": 3, "studio": "marketing", "task": "SEO + launch", "days": 3},
             ]
         elif "automation" in solution_type or "script" in solution_type:
             return [
-                {"phase": 1, "studio": "analytics", "task": "Process analysis", "days": 2},
+                {
+                    "phase": 1,
+                    "studio": "analytics",
+                    "task": "Process analysis",
+                    "days": 2,
+                },
                 {"phase": 2, "studio": "dev", "task": "Build automation", "days": 7},
-                {"phase": 3, "studio": "analytics", "task": "ROI measurement", "days": 2},
+                {
+                    "phase": 3,
+                    "studio": "analytics",
+                    "task": "ROI measurement",
+                    "days": 2,
+                },
             ]
         elif "saas" in solution_type or "app" in solution_type:
             return [
-                {"phase": 1, "studio": "analytics", "task": "Market research", "days": 3},
+                {
+                    "phase": 1,
+                    "studio": "analytics",
+                    "task": "Market research",
+                    "days": 3,
+                },
                 {"phase": 2, "studio": "creative", "task": "UX/UI design", "days": 5},
                 {"phase": 3, "studio": "dev", "task": "Build MVP", "days": 10},
-                {"phase": 4, "studio": "marketing", "task": "Launch campaign", "days": 5},
+                {
+                    "phase": 4,
+                    "studio": "marketing",
+                    "task": "Launch campaign",
+                    "days": 5,
+                },
                 {"phase": 5, "studio": "sales", "task": "First customers", "days": 7},
             ]
         elif "content" in solution_type:
             return [
-                {"phase": 1, "studio": "analytics", "task": "Audience research", "days": 2},
-                {"phase": 2, "studio": "creative", "task": "Content strategy", "days": 3},
-                {"phase": 3, "studio": "marketing", "task": "Content creation + distribution", "days": 10},
+                {
+                    "phase": 1,
+                    "studio": "analytics",
+                    "task": "Audience research",
+                    "days": 2,
+                },
+                {
+                    "phase": 2,
+                    "studio": "creative",
+                    "task": "Content strategy",
+                    "days": 3,
+                },
+                {
+                    "phase": 3,
+                    "studio": "marketing",
+                    "task": "Content creation + distribution",
+                    "days": 10,
+                },
             ]
         else:
             return [
@@ -358,11 +412,14 @@ class InitiativeEngine:
     # ── 3. APPROVAL GATE ──────────────────────────────────────
 
     def approve_initiative(
-        self, initiative_id: str, notes: str = "",
+        self,
+        initiative_id: str,
+        notes: str = "",
     ) -> Initiative:
         """Owner approves an initiative to proceed."""
         init = next(
-            (i for i in self._initiatives if i.id == initiative_id), None,
+            (i for i in self._initiatives if i.id == initiative_id),
+            None,
         )
         if not init:
             raise ValueError(f"Initiative {initiative_id} not found")
@@ -371,21 +428,29 @@ class InitiativeEngine:
         init.opportunity.status = "approved"
         init.opportunity.owner_notes = notes
 
-        self._bus.publish_sync(Event(
-            type="initiative.approved",
-            source="initiative_engine",
-            payload={"initiative_id": init.id, "opportunity": init.opportunity.title},
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="initiative.approved",
+                source="initiative_engine",
+                payload={
+                    "initiative_id": init.id,
+                    "opportunity": init.opportunity.title,
+                },
+            )
+        )
 
         logger.info("Initiative approved: %s", init.opportunity.title)
         return init
 
     def reject_initiative(
-        self, initiative_id: str, reason: str = "",
+        self,
+        initiative_id: str,
+        reason: str = "",
     ) -> Initiative:
         """Owner rejects an initiative."""
         init = next(
-            (i for i in self._initiatives if i.id == initiative_id), None,
+            (i for i in self._initiatives if i.id == initiative_id),
+            None,
         )
         if not init:
             raise ValueError(f"Initiative {initiative_id} not found")
@@ -400,7 +465,8 @@ class InitiativeEngine:
     # ── 4. EXECUTE (after approval) ───────────────────────────
 
     def execute_initiative(
-        self, initiative_id: str,
+        self,
+        initiative_id: str,
     ) -> dict[str, Any]:
         """
         Execute an approved initiative through Project Manager.
@@ -408,7 +474,8 @@ class InitiativeEngine:
         Only runs after owner approval.
         """
         init = next(
-            (i for i in self._initiatives if i.id == initiative_id), None,
+            (i for i in self._initiatives if i.id == initiative_id),
+            None,
         )
         if not init:
             raise ValueError(f"Initiative {initiative_id} not found")
@@ -422,6 +489,7 @@ class InitiativeEngine:
 
         try:
             from kernel.project_manager import get_project_manager
+
             pm = get_project_manager()
 
             goal = (
@@ -432,22 +500,23 @@ class InitiativeEngine:
             project = pm.plan_project(goal)
             init.project_id = project.id
 
-            self._bus.publish_sync(Event(
-                type="initiative.executing",
-                source="initiative_engine",
-                payload={
-                    "initiative_id": init.id,
-                    "project_id": project.id,
-                    "phases": len(project.phases),
-                },
-            ))
+            self._bus.publish_sync(
+                Event(
+                    type="initiative.executing",
+                    source="initiative_engine",
+                    payload={
+                        "initiative_id": init.id,
+                        "project_id": project.id,
+                        "phases": len(project.phases),
+                    },
+                )
+            )
 
             return {
                 "initiative_id": init.id,
                 "project_id": project.id,
                 "phases": [
-                    {"studio": p.studio, "task": p.task[:80]}
-                    for p in project.phases
+                    {"studio": p.studio, "task": p.task[:80]} for p in project.phases
                 ],
                 "status": "executing",
             }
@@ -460,7 +529,8 @@ class InitiativeEngine:
     # ── 5. FULL PROACTIVE CYCLE ───────────────────────────────
 
     def hustle(
-        self, scanner_name: str = "",
+        self,
+        scanner_name: str = "",
     ) -> dict[str, Any]:
         """
         Full proactive cycle: scan → propose → present for approval.
@@ -506,14 +576,16 @@ class InitiativeEngine:
 
     def get_pipeline(self) -> dict[str, Any]:
         """Get the full sales pipeline status."""
-        by_status = {}
+        by_status = {}  # type: ignore
         for init in self._initiatives:
-            by_status.setdefault(init.status, []).append({
-                "id": init.id,
-                "title": init.opportunity.title[:60],
-                "value": init.opportunity.estimated_value,
-                "confidence": init.opportunity.confidence,
-            })
+            by_status.setdefault(init.status, []).append(
+                {
+                    "id": init.id,
+                    "title": init.opportunity.title[:60],
+                    "value": init.opportunity.estimated_value,
+                    "confidence": init.opportunity.confidence,
+                }
+            )
 
         total_potential = sum(
             self._parse_value(init.opportunity.estimated_value)
@@ -531,7 +603,8 @@ class InitiativeEngine:
     def _parse_value(self, value_str: str) -> float:
         """Parse estimated value string to number (takes midpoint)."""
         import re
-        numbers = re.findall(r'[\d,]+', value_str.replace(",", ""))
+
+        numbers = re.findall(r"[\d,]+", value_str.replace(",", ""))
         if len(numbers) >= 2:
             return (float(numbers[0]) + float(numbers[1])) / 2
         elif numbers:

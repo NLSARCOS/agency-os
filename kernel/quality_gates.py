@@ -6,6 +6,7 @@ Measurable success criteria for each studio pipeline.
 Every pipeline run is evaluated against its quality gate
 to determine if the output meets minimum standards.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +19,7 @@ logger = logging.getLogger("agency.quality_gates")
 @dataclass
 class GateResult:
     """Result of a quality gate evaluation."""
+
     passed: bool = False
     score: float = 0.0  # 0-100
     checks: list[dict] = field(default_factory=list)
@@ -27,6 +29,7 @@ class GateResult:
 @dataclass
 class QualityGate:
     """Quality gate configuration for a studio."""
+
     studio: str
     min_score: float = 60.0
     require_content: bool = True
@@ -134,10 +137,13 @@ class QualityGates:
                 earned_score += 10
                 result.checks.append({"name": "content_length", "passed": True})
             else:
-                result.checks.append({
-                    "name": "content_length", "passed": False,
-                    "detail": f"{len(content)}/{gate.min_content_length} chars",
-                })
+                result.checks.append(
+                    {
+                        "name": "content_length",
+                        "passed": False,
+                        "detail": f"{len(content)}/{gate.min_content_length} chars",
+                    }
+                )
                 result.failures.append(
                     f"Content too short: {len(content)}/{gate.min_content_length}"
                 )
@@ -178,7 +184,10 @@ class QualityGates:
         if not result.passed:
             logger.warning(
                 "Quality gate FAILED for %s: %.1f%% < %.1f%% — %s",
-                studio, result.score, gate.min_score, result.failures,
+                studio,
+                result.score,
+                gate.min_score,
+                result.failures,
             )
 
         return {
@@ -194,19 +203,52 @@ class QualityGates:
         content_lower = content.lower()
 
         checks = {
-            "has_code": lambda: "```" in content or "def " in content or "function" in content,
-            "has_explanation": lambda: len(content) > 200 and any(w in content_lower for w in ["because", "therefore", "approach", "solution"]),
-            "has_leads": lambda: any(w in content_lower for w in ["lead", "contact", "prospect", "company"]),
-            "has_contact_info": lambda: "@" in content or "http" in content or "linkedin" in content_lower,
-            "has_strategy": lambda: any(w in content_lower for w in ["strategy", "plan", "approach", "objective"]),
-            "has_cta": lambda: any(w in content_lower for w in ["call to action", "cta", "sign up", "learn more", "contact"]),
-            "has_prospects": lambda: any(w in content_lower for w in ["prospect", "target", "company", "decision maker"]),
-            "has_template": lambda: any(w in content_lower for w in ["template", "subject:", "dear", "hi "]),
-            "has_metrics": lambda: any(w in content_lower for w in ["metric", "kpi", "rate", "percentage", "count", "total"]),
-            "has_insights": lambda: any(w in content_lower for w in ["insight", "trend", "pattern", "recommend", "suggest"]),
+            "has_code": lambda: (
+                "```" in content or "def " in content or "function" in content
+            ),
+            "has_explanation": lambda: (
+                len(content) > 200
+                and any(
+                    w in content_lower
+                    for w in ["because", "therefore", "approach", "solution"]
+                )
+            ),
+            "has_leads": lambda: any(
+                w in content_lower for w in ["lead", "contact", "prospect", "company"]
+            ),
+            "has_contact_info": lambda: (
+                "@" in content or "http" in content or "linkedin" in content_lower
+            ),
+            "has_strategy": lambda: any(
+                w in content_lower
+                for w in ["strategy", "plan", "approach", "objective"]
+            ),
+            "has_cta": lambda: any(
+                w in content_lower
+                for w in ["call to action", "cta", "sign up", "learn more", "contact"]
+            ),
+            "has_prospects": lambda: any(
+                w in content_lower
+                for w in ["prospect", "target", "company", "decision maker"]
+            ),
+            "has_template": lambda: any(
+                w in content_lower for w in ["template", "subject:", "dear", "hi "]
+            ),
+            "has_metrics": lambda: any(
+                w in content_lower
+                for w in ["metric", "kpi", "rate", "percentage", "count", "total"]
+            ),
+            "has_insights": lambda: any(
+                w in content_lower
+                for w in ["insight", "trend", "pattern", "recommend", "suggest"]
+            ),
             "has_deliverable": lambda: len(content) > 100,
-            "has_accounts": lambda: any(w in content_lower for w in ["account", "company", "target"]),
-            "has_plan": lambda: any(w in content_lower for w in ["plan", "step", "phase", "timeline"]),
+            "has_accounts": lambda: any(
+                w in content_lower for w in ["account", "company", "target"]
+            ),
+            "has_plan": lambda: any(
+                w in content_lower for w in ["plan", "step", "phase", "timeline"]
+            ),
         }
 
         checker = checks.get(name)

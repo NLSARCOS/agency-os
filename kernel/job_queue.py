@@ -9,6 +9,7 @@ SQLite-backed async job queue with:
 - Job status tracking
 - Concurrent execution limits
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable
+from typing import Callable
 
 from kernel.config import get_config
 
@@ -104,11 +105,11 @@ class JobQueue:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    cls._instance._initialized = False  # type: ignore
         return cls._instance
 
     def __init__(self) -> None:
-        if self._initialized:
+        if self._initialized:  # type: ignore
             return
         self._initialized = True
         cfg = get_config()
@@ -145,8 +146,15 @@ class JobQueue:
                 """INSERT INTO job_queue
                    (id, name, payload, status, priority, max_retries, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (job_id, name, json.dumps(payload or {}),
-                 JobStatus.PENDING.value, priority, max_retries, now),
+                (
+                    job_id,
+                    name,
+                    json.dumps(payload or {}),
+                    JobStatus.PENDING.value,
+                    priority,
+                    max_retries,
+                    now,
+                ),
             )
             self._conn.commit()
 
@@ -161,7 +169,8 @@ class JobQueue:
         if not row:
             return None
         return Job(
-            id=row["id"], name=row["name"],
+            id=row["id"],
+            name=row["name"],
             payload=json.loads(row["payload"] or "{}"),
             status=JobStatus(row["status"]),
             priority=row["priority"],
@@ -197,7 +206,8 @@ class JobQueue:
             self._conn.commit()
 
         job = Job(
-            id=row["id"], name=row["name"],
+            id=row["id"],
+            name=row["name"],
             payload=json.loads(row["payload"] or "{}"),
             status=JobStatus.RUNNING,
             max_retries=row["max_retries"],
@@ -241,7 +251,7 @@ class JobQueue:
             self._send_to_dead_letter(job, error)
         else:
             # Schedule retry with exponential backoff
-            delay = job.retry_delay_s * (2 ** job.retry_count)
+            delay = job.retry_delay_s * (2**job.retry_count)
             with self._lock:
                 self._conn.execute(
                     """UPDATE job_queue
@@ -252,7 +262,11 @@ class JobQueue:
                 self._conn.commit()
             logger.warning(
                 "Job retrying: %s [%s] attempt %d/%d (delay %ds)",
-                job.name, job.id, new_count, job.max_retries, delay,
+                job.name,
+                job.id,
+                new_count,
+                job.max_retries,
+                delay,
             )
 
     def _fail_job(self, job: Job, error: str) -> None:
@@ -277,9 +291,16 @@ class JobQueue:
                 """INSERT INTO dead_letter_queue
                    (id, job_id, name, payload, error, retry_count, created_at, died_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (dlq_id, job.id, job.name,
-                 json.dumps(job.payload), error,
-                 job.retry_count, job.created_at, now),
+                (
+                    dlq_id,
+                    job.id,
+                    job.name,
+                    json.dumps(job.payload),
+                    error,
+                    job.retry_count,
+                    job.created_at,
+                    now,
+                ),
             )
             self._conn.execute(
                 "UPDATE job_queue SET status = ? WHERE id = ?",
@@ -302,8 +323,10 @@ class JobQueue:
         ).fetchall()
         return [
             {
-                "id": r["id"], "job_id": r["job_id"],
-                "name": r["name"], "error": r["error"],
+                "id": r["id"],
+                "job_id": r["job_id"],
+                "name": r["name"],
+                "error": r["error"],
                 "retry_count": r["retry_count"],
                 "created_at": r["created_at"],
                 "died_at": r["died_at"],
@@ -326,9 +349,7 @@ class JobQueue:
         )
 
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM dead_letter_queue WHERE id = ?", (dlq_id,)
-            )
+            self._conn.execute("DELETE FROM dead_letter_queue WHERE id = ?", (dlq_id,))
             self._conn.commit()
 
         return new_id

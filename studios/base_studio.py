@@ -11,6 +11,7 @@ Studios integrate with:
 - kernel/model_router.py — for multi-model AI calls
 - kernel/state_manager.py — for persistent state & KPIs
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,6 +30,7 @@ logger = logging.getLogger("agency.studio")
 @dataclass
 class StudioResult:
     """Result from a studio pipeline execution."""
+
     output: str = ""
     artifacts: list[str] = field(default_factory=list)
     kpis: list[dict[str, Any]] = field(default_factory=list)
@@ -67,7 +69,7 @@ class BaseStudio(ABC):
     name: str = "base"
     description: str = "Base studio"
     agent_ref: str = ""  # Reference to .agent/agents/*.md
-    skills_refs: list[str] = None  # References to .agent/skills/*/
+    skills_refs: list[str] | None = None  # References to .agent/skills/*/
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -87,6 +89,7 @@ class BaseStudio(ABC):
     def model_router(self):
         if self._model_router is None:
             from kernel.model_router import get_model_router
+
             self._model_router = get_model_router()
         return self._model_router
 
@@ -95,6 +98,7 @@ class BaseStudio(ABC):
         """Access the sandboxed tool executor."""
         if self._tool_executor is None:
             from kernel.tool_executor import get_tool_executor
+
             self._tool_executor = get_tool_executor()
         return self._tool_executor
 
@@ -103,6 +107,7 @@ class BaseStudio(ABC):
         """Access the memory manager."""
         if self._memory_manager is None:
             from kernel.memory_manager import get_memory_manager
+
             self._memory_manager = get_memory_manager()
         return self._memory_manager
 
@@ -111,6 +116,7 @@ class BaseStudio(ABC):
         """Access the OpenClaw bridge."""
         if self._openclaw is None:
             from kernel.openclaw_bridge import get_openclaw
+
             self._openclaw = get_openclaw()
         return self._openclaw
 
@@ -170,7 +176,6 @@ class BaseStudio(ABC):
         model_used = ""
         tokens_in = 0
         tokens_out = 0
-        success = True
         error_msg = ""
 
         # Try OpenClaw first
@@ -190,19 +195,30 @@ class BaseStudio(ABC):
                 if content:
                     self.memory.store(
                         self.agent_ref or self.name,
-                        "assistant", content[:500],
+                        "assistant",
+                        content[:500],
                     )
                     latency = (_time.monotonic() - start) * 1000
                     guardrails.record_usage(
-                        self.name, self.agent_ref or self.name,
-                        model_used, tokens_in, tokens_out, latency,
+                        self.name,
+                        self.agent_ref or self.name,
+                        model_used,
+                        tokens_in,
+                        tokens_out,
+                        latency,
                     )
                     audit.log(
-                        studio=self.name, agent_id=self.agent_ref or self.name,
-                        model=model_used, provider="openclaw",
-                        tokens_in=tokens_in, tokens_out=tokens_out,
-                        estimated_cost=guardrails._estimate_cost(model_used, tokens_in, tokens_out),
-                        latency_ms=latency, success=True,
+                        studio=self.name,
+                        agent_id=self.agent_ref or self.name,
+                        model=model_used,
+                        provider="openclaw",
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        estimated_cost=guardrails._estimate_cost(
+                            model_used, tokens_in, tokens_out
+                        ),
+                        latency_ms=latency,
+                        success=True,
                         prompt_preview=prompt[:100],
                     )
                     return content
@@ -225,19 +241,29 @@ class BaseStudio(ABC):
 
         self.memory.store(
             self.agent_ref or self.name,
-            "assistant", content[:500],
+            "assistant",
+            content[:500],
         )
         guardrails.record_usage(
-            self.name, self.agent_ref or self.name,
-            model_used, tokens_in, tokens_out, latency,
+            self.name,
+            self.agent_ref or self.name,
+            model_used,
+            tokens_in,
+            tokens_out,
+            latency,
         )
         audit.log(
-            studio=self.name, agent_id=self.agent_ref or self.name,
-            model=model_used, provider="model_router",
-            tokens_in=tokens_in, tokens_out=tokens_out,
+            studio=self.name,
+            agent_id=self.agent_ref or self.name,
+            model=model_used,
+            provider="model_router",
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
             estimated_cost=guardrails._estimate_cost(model_used, tokens_in, tokens_out),
-            latency_ms=latency, success=bool(content),
-            error=error_msg, prompt_preview=prompt[:100],
+            latency_ms=latency,
+            success=bool(content),
+            error=error_msg,
+            prompt_preview=prompt[:100],
         )
         return content
 
@@ -248,6 +274,7 @@ class BaseStudio(ABC):
         """Access the action executor for autonomous file/command execution."""
         if not hasattr(self, "_action_executor") or self._action_executor is None:
             from kernel.action_executor import get_action_executor
+
             self._action_executor = get_action_executor()
         return self._action_executor
 
@@ -299,20 +326,28 @@ class BaseStudio(ABC):
     ) -> dict[str, Any]:
         """Git add, commit, and optionally push."""
         import subprocess
+
         cwd = project_dir or str(self.cfg.root)
-        results = {"operations": [], "errors": []}
+        results = {"operations": [], "errors": []}  # type: ignore
 
         # Add
         proc = subprocess.run(
-            "git add -A", shell=True, capture_output=True, text=True,
-            cwd=cwd, timeout=30,
+            "git add -A",
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=30,
         )
         results["operations"].append("git add -A")
 
         # Commit
         proc = subprocess.run(
             ["git", "commit", "-m", message],
-            capture_output=True, text=True, cwd=cwd, timeout=30,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=30,
         )
         if proc.returncode == 0:
             results["operations"].append(f"git commit: {message}")
@@ -322,8 +357,12 @@ class BaseStudio(ABC):
         # Push
         if push:
             proc = subprocess.run(
-                "git push origin main", shell=True,
-                capture_output=True, text=True, cwd=cwd, timeout=60,
+                "git push origin main",
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=60,
             )
             if proc.returncode == 0:
                 results["operations"].append("git push origin main")
@@ -337,7 +376,8 @@ class BaseStudio(ABC):
     def web_search(self, query: str) -> str:
         """Search the web using Brave API."""
         result = self.tools.execute(
-            "search_web", {"query": query},
+            "search_web",
+            {"query": query},
             agent_id=self.agent_ref or self.name,
         )
         return result.output if result.success else ""
@@ -345,7 +385,8 @@ class BaseStudio(ABC):
     def scrape_url(self, url: str) -> str:
         """Scrape text content from a URL."""
         result = self.tools.execute(
-            "scrape_url", {"url": url},
+            "scrape_url",
+            {"url": url},
             agent_id=self.agent_ref or self.name,
         )
         return result.output if result.success else ""
@@ -356,7 +397,8 @@ class BaseStudio(ABC):
         if cwd:
             params["cwd"] = cwd
         result = self.tools.execute(
-            "shell", params,
+            "shell",
+            params,
             agent_id=self.agent_ref or self.name,
         )
         return result.output if result.success else f"Error: {result.error}"
@@ -382,7 +424,9 @@ class BaseStudio(ABC):
         ...
 
     @abstractmethod
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         """Phase 3: Run the core pipeline."""
         ...
 
@@ -403,6 +447,7 @@ class BaseStudio(ABC):
         passed = True
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
             if oc.is_available():
                 verdict = oc.ask(
@@ -418,7 +463,8 @@ class BaseStudio(ABC):
                     quality_notes = verdict[:300]
                     # Parse score if present
                     import re
-                    score_match = re.search(r'SCORE:\s*(\d+)', verdict)
+
+                    score_match = re.search(r"SCORE:\s*(\d+)", verdict)
                     if score_match:
                         score = int(score_match.group(1))
                         passed = score >= 5
@@ -457,7 +503,8 @@ class BaseStudio(ABC):
         # Store task in memory
         self.memory.store(
             self.agent_ref or self.name,
-            "user", f"[{self.name}] {task[:300]}",
+            "user",
+            f"[{self.name}] {task[:300]}",
         )
 
         try:
@@ -471,15 +518,22 @@ class BaseStudio(ABC):
             logger.info("[%s] Execution complete", self.name)
 
             review_result = self.review(execution_result)
-            logger.info("[%s] Review: %s", self.name,
-                       "PASSED" if review_result.get("review_passed") else "FAILED")
+            logger.info(
+                "[%s] Review: %s",
+                self.name,
+                "PASSED" if review_result.get("review_passed") else "FAILED",
+            )
 
             result = self.deliver(review_result)
             result.duration_seconds = time.monotonic() - start
 
             # Log KPIs
-            self.state.log_kpi(self.name, "pipeline_duration", result.duration_seconds, "seconds")
-            self.state.log_kpi(self.name, "pipeline_success", 1.0 if result.success else 0.0)
+            self.state.log_kpi(
+                self.name, "pipeline_duration", result.duration_seconds, "seconds"
+            )
+            self.state.log_kpi(
+                self.name, "pipeline_success", 1.0 if result.success else 0.0
+            )
 
             # Store result as knowledge
             if result.success and result.output:
@@ -530,6 +584,7 @@ def load_all_studios() -> dict[str, BaseStudio]:
     }
 
     import importlib
+
     for name, module_path in studio_modules.items():
         try:
             mod = importlib.import_module(module_path)

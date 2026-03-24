@@ -5,6 +5,7 @@ Agency OS — Centralized Configuration
 Zero hardcoded paths. Everything is relative or env-driven.
 Works on Linux AND macOS out of the box.
 """
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,7 @@ import platform
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore
 from dotenv import load_dotenv
 
 
@@ -24,7 +25,7 @@ def _find_root() -> Path:
     env_root = os.environ.get("AGENCY_OS_ROOT")
     if env_root:
         return Path(env_root).resolve()
-    
+
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
         if (parent / "pyproject.toml").exists():
@@ -46,11 +47,11 @@ class Config:
     def __new__(cls) -> Config:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._loaded = False
+            cls._instance._loaded = False  # type: ignore
         return cls._instance
 
     def __init__(self) -> None:
-        if self._loaded:
+        if self._loaded:  # type: ignore
             return
         self._loaded = True
 
@@ -91,8 +92,13 @@ class Config:
 
         # Studio names
         self.studio_names = [
-            "dev", "marketing", "sales", "leadops",
-            "abm", "analytics", "creative",
+            "dev",
+            "marketing",
+            "sales",
+            "leadops",
+            "abm",
+            "analytics",
+            "creative",
         ]
 
         # Response language (e.g. 'en', 'es', 'pt', 'fr')
@@ -102,10 +108,18 @@ class Config:
     def language_instruction(self) -> str:
         """System prompt fragment to enforce response language."""
         lang_names = {
-            "en": "English", "es": "Spanish", "pt": "Portuguese",
-            "fr": "French", "de": "German", "it": "Italian",
-            "zh": "Chinese", "ja": "Japanese", "ko": "Korean",
-            "ar": "Arabic", "ru": "Russian", "tr": "Turkish",
+            "en": "English",
+            "es": "Spanish",
+            "pt": "Portuguese",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "zh": "Chinese",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "ar": "Arabic",
+            "ru": "Russian",
+            "tr": "Turkish",
         }
         name = lang_names.get(self.language, self.language)
         if self.language == "en":

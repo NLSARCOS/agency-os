@@ -9,6 +9,7 @@ Pipeline-level tracing with:
 - Error classification and diagnostics
 - Console-friendly pretty output
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +26,7 @@ logger = logging.getLogger("agency.telemetry")
 @dataclass
 class SpanRecord:
     """A single span (step) in a pipeline trace."""
+
     name: str
     span_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     parent_id: str = ""
@@ -42,6 +44,7 @@ class SpanRecord:
 @dataclass
 class TraceRecord:
     """A complete pipeline trace."""
+
     trace_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     correlation_id: str = ""
     studio: str = ""
@@ -91,7 +94,9 @@ class Telemetry:
 
         logger.info(
             "🔍 Trace started: %s/%s [%s]",
-            studio, operation, record.trace_id,
+            studio,
+            operation,
+            record.trace_id,
         )
 
         try:
@@ -110,8 +115,12 @@ class Telemetry:
 
             logger.info(
                 "🔍 Trace complete: %s/%s [%s] %s %.0fms %d tokens",
-                studio, operation, record.trace_id,
-                record.status, record.total_duration_ms, record.total_tokens,
+                studio,
+                operation,
+                record.trace_id,
+                record.status,
+                record.total_duration_ms,
+                record.total_tokens,
             )
 
     def get_recent_traces(self, limit: int = 20) -> list[dict]:
@@ -177,8 +186,10 @@ class Telemetry:
         """Get telemetry statistics."""
         if not self._traces:
             return {
-                "total_traces": 0, "active": len(self._active_traces),
-                "avg_duration_ms": 0, "total_tokens": 0,
+                "total_traces": 0,
+                "active": len(self._active_traces),
+                "avg_duration_ms": 0,
+                "total_tokens": 0,
             }
 
         return {
@@ -190,7 +201,10 @@ class Telemetry:
             "total_tokens": sum(t.total_tokens for t in self._traces),
             "by_studio": self._stats_by_studio(),
             "error_rate": round(
-                sum(1 for t in self._traces if t.status == "error") / len(self._traces) * 100, 1
+                sum(1 for t in self._traces if t.status == "error")
+                / len(self._traces)
+                * 100,
+                1,
             ),
         }
 

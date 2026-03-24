@@ -11,10 +11,10 @@ Checks all system components and reports detailed status:
 - Module import health
 - Queue status
 """
+
 from __future__ import annotations
 
 import os
-import sys
 import time
 import importlib
 from typing import Any
@@ -32,10 +32,12 @@ def check_health() -> dict[str, Any]:
     # 1. Database
     try:
         from kernel.state_manager import get_state
+
         state = get_state()
         count = state._conn.execute("SELECT COUNT(*) FROM missions").fetchone()[0]
         results["checks"]["database"] = {
-            "status": "ok", "missions": count,
+            "status": "ok",
+            "missions": count,
         }
     except Exception as e:
         results["checks"]["database"] = {"status": "error", "error": str(e)}
@@ -44,6 +46,7 @@ def check_health() -> dict[str, Any]:
     # 2. Providers
     try:
         from kernel.provider_detector import get_provider_detector
+
         pd = get_provider_detector()
         summary = pd.get_summary()
         results["checks"]["providers"] = {
@@ -59,6 +62,7 @@ def check_health() -> dict[str, Any]:
     # 3. Memory
     try:
         import resource
+
         mem_usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         mem_mb = mem_usage / 1024  # KB to MB on Linux
         results["checks"]["memory"] = {
@@ -71,6 +75,7 @@ def check_health() -> dict[str, Any]:
     # 4. Disk
     try:
         from kernel.config import get_config
+
         cfg = get_config()
         stat = os.statvfs(str(cfg.root))
         free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
@@ -83,10 +88,18 @@ def check_health() -> dict[str, Any]:
 
     # 5. Kernel modules
     modules = [
-        "kernel.config", "kernel.state_manager", "kernel.event_bus",
-        "kernel.guardrails", "kernel.audit_trail", "kernel.telemetry",
-        "kernel.crew_engine", "kernel.quality_gates", "kernel.feature_flags",
-        "kernel.cross_studio", "kernel.job_queue", "kernel.plugin_loader",
+        "kernel.config",
+        "kernel.state_manager",
+        "kernel.event_bus",
+        "kernel.guardrails",
+        "kernel.audit_trail",
+        "kernel.telemetry",
+        "kernel.crew_engine",
+        "kernel.quality_gates",
+        "kernel.feature_flags",
+        "kernel.cross_studio",
+        "kernel.job_queue",
+        "kernel.plugin_loader",
     ]
     loaded = 0
     failed_mods = []
@@ -109,6 +122,7 @@ def check_health() -> dict[str, Any]:
     # 6. Job queue
     try:
         from kernel.job_queue import get_job_queue
+
         jq = get_job_queue()
         stats = jq.get_stats()
         results["checks"]["job_queue"] = {
@@ -122,6 +136,7 @@ def check_health() -> dict[str, Any]:
     # 7. Guardrails
     try:
         from kernel.guardrails import get_guardrails
+
         g = get_guardrails()
         usage = g.get_usage_summary()
         results["checks"]["guardrails"] = {

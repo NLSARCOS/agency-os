@@ -5,6 +5,7 @@ Marketing Studio — Campaign & Strategy Pipeline
 Uses: .agent/agents/product-manager.md
 Skills: seo-fundamentals, frontend-design, brainstorming
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -94,7 +95,9 @@ class Studio(BaseStudio):
         }
         return {**intake_result, "steps": steps.get(op, steps["strategy"])}
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         prompt = (
             f"## Marketing Task — {plan['operation'].upper()}\n"
             f"**Task:** {plan['task']}\n"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — OpenClaw Bridge
+Agency OS v5.0.0 — OpenClaw Bridge
 
 Integration layer with OpenClaw gateway for:
 - Multi-model routing through the gateway
@@ -8,6 +8,7 @@ Integration layer with OpenClaw gateway for:
 - Multi-channel message handling (WhatsApp, Telegram, Discord, Slack, CLI)
 - Hybrid intelligence (complex → premium, simple → free/local)
 """
+
 from __future__ import annotations
 
 import json
@@ -27,6 +28,7 @@ logger = logging.getLogger("agency.openclaw")
 @dataclass
 class OpenClawConfig:
     """OpenClaw connection configuration."""
+
     gateway_url: str = "http://localhost:3000"
     api_key: str = ""
     default_agent: str = "main"
@@ -37,6 +39,7 @@ class OpenClawConfig:
 @dataclass
 class ChatMessage:
     """A message in OpenClaw format."""
+
     role: str  # system, user, assistant
     content: str
     name: str = ""
@@ -47,6 +50,7 @@ class ChatMessage:
 @dataclass
 class OpenClawResponse:
     """Response from OpenClaw gateway."""
+
     content: str
     model: str = ""
     provider: str = ""
@@ -75,14 +79,10 @@ class OpenClawBridge:
     """
 
     def __init__(self, config: OpenClawConfig | None = None) -> None:
-        cfg = get_config()
+        get_config()
         self._config = config or OpenClawConfig(
-            gateway_url=os.environ.get(
-                "OPENCLAW_URL", "http://localhost:3000"
-            ),
-            api_key=os.environ.get(
-                "OPENCLAW_API_KEY", ""
-            ),
+            gateway_url=os.environ.get("OPENCLAW_URL", "http://localhost:3000"),
+            api_key=os.environ.get("OPENCLAW_API_KEY", ""),
         )
         self._client = httpx.Client(timeout=self._config.timeout)
         self._sessions: dict[str, str] = {}  # agent_id → session_id
@@ -201,24 +201,21 @@ class OpenClawBridge:
             )
 
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                # Gateway is WebSocket-only; remember and fall back
-                self._gateway_has_rest = False
-                logger.info(
-                    "OpenClaw gateway is WebSocket-only (no /v1/chat/completions). "
-                    "Switching to direct API for all future calls."
-                )
-                return self._direct_fallback(messages, model, system)
-            logger.error("OpenClaw HTTP error: %s", e)
-            return OpenClawResponse(
-                content="", success=False,
-                error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
-                latency_ms=(time.monotonic() - start) * 1000,
+            # Gateway is WebSocket-only or returning an API rejection (e.g. deactivated_workspace).
+            # We remember and fall back to the direct API to prevent mission crashes.
+            logger.warning(
+                "OpenClaw gateway HTTP request failed (status %s). "
+                "Switching to direct OpenRouter API for all future calls. Details: %s",
+                e.response.status_code, e.response.text[:200]
             )
+            self._gateway_has_rest = False
+            return self._direct_fallback(messages, model, system, tools)
         except Exception as e:
             logger.error("OpenClaw error: %s", e)
             return OpenClawResponse(
-                content="", success=False, error=str(e),
+                content="",
+                success=False,
+                error=str(e),
                 latency_ms=(time.monotonic() - start) * 1000,
             )
 
@@ -301,24 +298,29 @@ class OpenClawBridge:
         messages: list[ChatMessage],
         model: str,
         system: str,
+        tools: list[dict] | None = None,
     ) -> OpenClawResponse:
         """
         Fallback when the gateway REST endpoint is unavailable.
-        
+
         Strategy:
         1. Try `openclaw agent` CLI (uses gateway WebSocket + OAuth models)
         2. If CLI fails, use model_router direct API calls
         """
         prompt = messages[-1].content if messages else ""
-        
+
+        if tools:
+            raise RuntimeError("OpenClaw CLI fallback does not support tool calls.")
+
         # Strategy 1: Use OpenClaw CLI (leverages OAuth, all configured models)
         try:
             return self._call_via_cli(prompt, system)
         except Exception as e:
             logger.debug("OpenClaw CLI fallback failed: %s — trying direct API", e)
-        
+
         # Strategy 2: Direct API calls via model_router
         from kernel.model_router import get_model_router
+
         router = get_model_router()
         resp = router.call_model_sync(prompt=prompt, system=system)
         return OpenClawResponse(
@@ -335,14 +337,22 @@ class OpenClawBridge:
     def _call_via_cli(self, prompt: str, system: str = "") -> OpenClawResponse:
         """
         Route through `openclaw agent` CLI (WebSocket → gateway models + OAuth).
-        
+
         This leverages OpenClaw's full model stack including OAuth-connected
         providers like openai-codex that aren't accessible via REST.
         """
         import subprocess
-        
-        cmd = ["openclaw", "agent", "--agent", self._config.default_agent, "--json", "--message", prompt]
-        
+
+        cmd = [
+            "openclaw",
+            "agent",
+            "--agent",
+            self._config.default_agent,
+            "--json",
+            "--message",
+            prompt,
+        ]
+
         start = time.monotonic()
         result = subprocess.run(
             cmd,
@@ -351,10 +361,12 @@ class OpenClawBridge:
             timeout=120,
         )
         latency = (time.monotonic() - start) * 1000
-        
+
         if result.returncode != 0:
-            raise RuntimeError(f"openclaw agent failed (exit {result.returncode}): {result.stderr[:200]}")
-        
+            raise RuntimeError(
+                f"openclaw agent failed (exit {result.returncode}): {result.stderr[:200]}"
+            )
+
         # Parse JSON output
         try:
             data = json.loads(result.stdout)
@@ -366,15 +378,25 @@ class OpenClawBridge:
                 provider="openclaw",
                 latency_ms=latency,
             )
-        
+
         # Extract from structured JSON response
-        content = (
-            data.get("result", {}).get("content", "")
-            or data.get("content", "")
-            or data.get("message", "")
-            or result.stdout.strip()
-        )
+        content = ""
+        payloads = data.get("payloads", [])
+        if payloads and isinstance(payloads, list):
+            content = payloads[0].get("text", "")
         
+        # Fallback fields
+        if not content:
+            content = (
+                data.get("result", {}).get("content", "")
+                or data.get("content", "")
+                or data.get("message", "")
+                or result.stdout.strip()
+            )
+
+        if "API rate limit" in content or "unauthorized" in content.lower() or "deactivated" in content.lower():
+            raise RuntimeError(f"OpenClaw CLI returned error: {content}")
+
         return OpenClawResponse(
             content=content,
             model=data.get("model", "openclaw-cli"),
@@ -389,11 +411,7 @@ class OpenClawBridge:
     @staticmethod
     def _escape_html(text: str) -> str:
         """Escape HTML special chars for Telegram HTML parse_mode."""
-        return (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def send_telegram(
         self,
@@ -450,7 +468,9 @@ class OpenClawBridge:
                 if resp.status_code != 200:
                     logger.warning("Telegram chunk %d failed: %s", i, resp.text[:200])
                     return False
-            logger.info("Telegram message sent (%d chunk(s)) to %s", len(chunks), target_chat)
+            logger.info(
+                "Telegram message sent (%d chunk(s)) to %s", len(chunks), target_chat
+            )
             return True
         except Exception as e:
             logger.error("Telegram send error: %s", e)
@@ -566,33 +586,53 @@ class OpenClawBridge:
 
         def _send_to_gateway():
             import time as _time
+
             for attempt in range(3):
                 try:
-                    if not self.is_available(): break
+                    if not self.is_available():
+                        break
                     headers = {"Content-Type": "application/json"}
-                    if self._config.api_key: headers["Authorization"] = f"Bearer {self._config.api_key}"
-                    r = self._client.post(f"{self._config.gateway_url}/v1/messages", headers=headers, json=result_payload, timeout=5)
-                    if r.status_code in (200, 201): return
-                except Exception: pass
+                    if self._config.api_key:
+                        headers["Authorization"] = f"Bearer {self._config.api_key}"
+                    r = self._client.post(
+                        f"{self._config.gateway_url}/v1/messages",
+                        headers=headers,
+                        json=result_payload,
+                        timeout=5,
+                    )
+                    if r.status_code in (200, 201):
+                        return
+                except Exception:
+                    pass
                 _time.sleep(1)
 
         import threading
+
         threading.Thread(target=_send_to_gateway, daemon=True).start()
 
         # ── 2. Track on internal PM board (log) ────────────────
         logger.info(
             "PM received: #%d [%s] %s → %s (%dms)",
-            mission_id, studio, name[:50], status, duration_ms,
+            mission_id,
+            studio,
+            name[:50],
+            status,
+            duration_ms,
         )
 
         # ── 3. Decision: should the user be interrupted? ───────
         from kernel.state_manager import get_state
+
         state = get_state()
         mission = state.get_mission(mission_id)
         meta = {}
         if mission and mission.get("metadata"):
             try:
-                meta = json.loads(mission["metadata"]) if isinstance(mission["metadata"], str) else mission["metadata"]
+                meta = (
+                    json.loads(mission["metadata"])
+                    if isinstance(mission["metadata"], str)
+                    else mission["metadata"]
+                )
             except Exception:
                 meta = {}
 
@@ -610,7 +650,12 @@ class OpenClawBridge:
             done = sum(1 for m in all_missions if m["status"] in ("done", "failed"))
 
             if done < total:
-                logger.info("PM: objective %s progress %d/%d — waiting", objective_id[:8], done, total)
+                logger.info(
+                    "PM: objective %s progress %d/%d — waiting",
+                    objective_id[:8],
+                    done,
+                    total,
+                )
                 return True
 
             succeeded = sum(1 for m in all_missions if m["status"] == "done")
@@ -624,15 +669,21 @@ class OpenClawBridge:
                 short = m["name"].replace(f"[{m['studio'].upper()}] ", "")[:40]
                 lines.append(f"  {icon} [#{m['id']}] [{m['studio'].upper()}] {short}")
 
-            header = f"✅ {'Objetivo completado' if _es else 'Objective complete'}" if failed == 0 else f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
+            header = (
+                f"✅ {'Objetivo completado' if _es else 'Objective complete'}"
+                if failed == 0
+                else f"⚠️ {'Objetivo parcial' if _es else 'Partial'}: {succeeded}✅ {failed}❌"
+            )
             self.notify_owner(f"{header}\n📋 {objective_text}\n{chr(10).join(lines)}")
             return True
 
         # Standalone task: only notify on failure
         if not success:
             _es = os.environ.get("AGENCY_LANGUAGE", "en") == "es"
-            self.notify_owner(f"❌ {'Falló' if _es else 'Failed'}: {name[:50]}\n[{studio.upper()}] {error[:120] if error else '?'}")
-            
+            self.notify_owner(
+                f"❌ {'Falló' if _es else 'Failed'}: {name[:50]}\n[{studio.upper()}] {error[:120] if error else '?'}"
+            )
+
         return True
 
     def report_objective_complete(
@@ -668,8 +719,16 @@ class OpenClawBridge:
             f"📋 {objective[:100]}\n"
             f"✅ {succeeded}/{total} {'misiones exitosas' if _es else 'missions succeeded'}\n"
             + (f"❌ {failed} {'fallaron' if _es else 'failed'}\n" if failed else "")
-            + (f"🏢 Studios: {', '.join(s.upper() for s in (studios or []))}\n" if studios else "")
-            + (f"📄 {'Reporte' if _es else 'Report'}: `{report_file}`" if report_file else "")
+            + (
+                f"🏢 Studios: {', '.join(s.upper() for s in (studios or []))}\n"
+                if studios
+                else ""
+            )
+            + (
+                f"📄 {'Reporte' if _es else 'Report'}: `{report_file}`"
+                if report_file
+                else ""
+            )
         )
 
         # Try OpenClaw first

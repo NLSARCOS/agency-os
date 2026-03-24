@@ -13,6 +13,7 @@ The brain that decomposes complex goals into multi-studio PROJECTS:
 
 This is what makes Agency OS a REAL agency, not just a tool.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,6 +32,7 @@ logger = logging.getLogger("agency.project_manager")
 @dataclass
 class ProjectPhase:
     """A single phase in a project."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:8])
     studio: str = ""
     task: str = ""
@@ -45,6 +47,7 @@ class ProjectPhase:
 @dataclass
 class Project:
     """A multi-studio project with phases."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:12])
     name: str = ""
     goal: str = ""
@@ -64,71 +67,151 @@ class Project:
 PROJECT_TEMPLATES: dict[str, list[dict]] = {
     "build_and_launch": [
         {"studio": "dev", "task": "Build {goal}", "order": 1},
-        {"studio": "creative", "task": "Create brand assets and copy for {goal}", "order": 2},
-        {"studio": "marketing", "task": "Create launch campaign for {goal}", "order": 3},
-        {"studio": "analytics", "task": "Set up tracking and KPIs for {goal}", "order": 4},
+        {
+            "studio": "creative",
+            "task": "Create brand assets and copy for {goal}",
+            "order": 2,
+        },
+        {
+            "studio": "marketing",
+            "task": "Create launch campaign for {goal}",
+            "order": 3,
+        },
+        {
+            "studio": "analytics",
+            "task": "Set up tracking and KPIs for {goal}",
+            "order": 4,
+        },
     ],
     "build_and_sell": [
         {"studio": "dev", "task": "Build {goal}", "order": 1},
-        {"studio": "creative", "task": "Create landing page copy for {goal}", "order": 2},
-        {"studio": "marketing", "task": "Create marketing campaign for {goal}", "order": 3},
+        {
+            "studio": "creative",
+            "task": "Create landing page copy for {goal}",
+            "order": 2,
+        },
+        {
+            "studio": "marketing",
+            "task": "Create marketing campaign for {goal}",
+            "order": 3,
+        },
         {"studio": "sales", "task": "Create sales outreach for {goal}", "order": 4},
         {"studio": "analytics", "task": "Track sales pipeline for {goal}", "order": 5},
     ],
     "lead_gen_pipeline": [
         {"studio": "leadops", "task": "Find and qualify leads for {goal}", "order": 1},
         {"studio": "sales", "task": "Create outreach sequences for leads", "order": 2},
-        {"studio": "marketing", "task": "Create nurture campaign for leads", "order": 3},
+        {
+            "studio": "marketing",
+            "task": "Create nurture campaign for leads",
+            "order": 3,
+        },
         {"studio": "analytics", "task": "Track conversion funnel", "order": 4},
     ],
     "content_campaign": [
-        {"studio": "analytics", "task": "Research audience and competitors for {goal}", "order": 1},
-        {"studio": "creative", "task": "Create content strategy for {goal}", "order": 2},
-        {"studio": "marketing", "task": "Execute content campaign for {goal}", "order": 3},
+        {
+            "studio": "analytics",
+            "task": "Research audience and competitors for {goal}",
+            "order": 1,
+        },
+        {
+            "studio": "creative",
+            "task": "Create content strategy for {goal}",
+            "order": 2,
+        },
+        {
+            "studio": "marketing",
+            "task": "Execute content campaign for {goal}",
+            "order": 3,
+        },
         {"studio": "analytics", "task": "Measure campaign performance", "order": 4},
     ],
     "abm_campaign": [
-        {"studio": "leadops", "task": "Identify target accounts for {goal}", "order": 1},
-        {"studio": "abm", "task": "Create personalized outreach per account", "order": 2},
+        {
+            "studio": "leadops",
+            "task": "Identify target accounts for {goal}",
+            "order": 1,
+        },
+        {
+            "studio": "abm",
+            "task": "Create personalized outreach per account",
+            "order": 2,
+        },
         {"studio": "sales", "task": "Execute multi-channel outreach", "order": 3},
         {"studio": "analytics", "task": "Track account engagement", "order": 4},
     ],
     "product_launch": [
         {"studio": "dev", "task": "Build and deploy {goal}", "order": 1},
-        {"studio": "creative", "task": "Create launch assets (copy, visuals, messaging)", "order": 2},
-        {"studio": "marketing", "task": "Create launch campaign + PR strategy", "order": 3},
-        {"studio": "sales", "task": "Prepare sales team: scripts, demos, objections", "order": 4},
+        {
+            "studio": "creative",
+            "task": "Create launch assets (copy, visuals, messaging)",
+            "order": 2,
+        },
+        {
+            "studio": "marketing",
+            "task": "Create launch campaign + PR strategy",
+            "order": 3,
+        },
+        {
+            "studio": "sales",
+            "task": "Prepare sales team: scripts, demos, objections",
+            "order": 4,
+        },
         {"studio": "leadops", "task": "Build prospect lists for launch", "order": 5},
-        {"studio": "analytics", "task": "Launch day tracking + 30-day metrics plan", "order": 6},
+        {
+            "studio": "analytics",
+            "task": "Launch day tracking + 30-day metrics plan",
+            "order": 6,
+        },
     ],
 }
 
 # Keywords that map goals to templates
 TEMPLATE_SIGNALS: dict[str, list[str]] = {
     "build_and_sell": [
-        "build and sell", "create and sell", "make and sell",
-        "build a website and sell", "create something to sell",
+        "build and sell",
+        "create and sell",
+        "make and sell",
+        "build a website and sell",
+        "create something to sell",
     ],
     "build_and_launch": [
-        "build and launch", "create and launch", "make and launch",
-        "build a website", "create a web", "build an app",
-        "build a landing page", "create a site",
+        "build and launch",
+        "create and launch",
+        "make and launch",
+        "build a website",
+        "create a web",
+        "build an app",
+        "build a landing page",
+        "create a site",
     ],
     "product_launch": [
-        "product launch", "launch a product", "go to market",
-        "launch strategy", "release a product",
+        "product launch",
+        "launch a product",
+        "go to market",
+        "launch strategy",
+        "release a product",
     ],
     "lead_gen_pipeline": [
-        "lead generation", "find leads", "generate leads",
-        "prospect list", "find customers",
+        "lead generation",
+        "find leads",
+        "generate leads",
+        "prospect list",
+        "find customers",
     ],
     "content_campaign": [
-        "content campaign", "content strategy", "create content",
-        "blog strategy", "social media campaign",
+        "content campaign",
+        "content strategy",
+        "create content",
+        "blog strategy",
+        "social media campaign",
     ],
     "abm_campaign": [
-        "abm", "account based", "target account",
-        "enterprise outreach", "personalized outreach",
+        "abm",
+        "account based",
+        "target account",
+        "enterprise outreach",
+        "personalized outreach",
     ],
 }
 
@@ -167,7 +250,7 @@ class ProjectManager:
             # Fallback: single phase with auto-detected studio
             phases_config = [{"studio": "dev", "task": goal, "order": 1}]
 
-        phases = []
+        phases = []  # type: ignore
         for cfg in phases_config:
             phase = ProjectPhase(
                 studio=cfg["studio"],
@@ -189,21 +272,24 @@ class ProjectManager:
 
         self._projects[project.id] = project
 
-        self._bus.publish_sync(Event(
-            type="project.planned",
-            source="project_manager",
-            payload={
-                "project_id": project.id,
-                "goal": goal[:200],
-                "template": template,
-                "phases": len(phases),
-                "studios": [p.studio for p in phases],
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="project.planned",
+                source="project_manager",
+                payload={
+                    "project_id": project.id,
+                    "goal": goal[:200],
+                    "template": template,
+                    "phases": len(phases),
+                    "studios": [p.studio for p in phases],
+                },
+            )
+        )
 
         logger.info(
             "Project planned [%s]: %d phases → %s",
-            project.id, len(phases),
+            project.id,
+            len(phases),
             " → ".join(p.studio for p in phases),
         )
 
@@ -226,11 +312,13 @@ class ProjectManager:
         project.status = "executing"
         start = time.monotonic()
 
-        self._bus.publish_sync(Event(
-            type="project.started",
-            source="project_manager",
-            payload={"project_id": project.id, "goal": project.goal[:200]},
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="project.started",
+                source="project_manager",
+                payload={"project_id": project.id, "goal": project.goal[:200]},
+            )
+        )
 
         accumulated_context = dict(project.context)
         all_success = True
@@ -240,8 +328,11 @@ class ProjectManager:
 
             logger.info(
                 "Project [%s] Phase %d/%d: %s → %s",
-                project.id, i + 1, len(project.phases),
-                phase.studio, phase.task[:80],
+                project.id,
+                i + 1,
+                len(project.phases),
+                phase.studio,
+                phase.task[:80],
             )
 
             # Check dependencies
@@ -249,7 +340,9 @@ class ProjectManager:
                 dep = next((p for p in project.phases if p.id == dep_id), None)
                 if dep and dep.status == "failed":
                     phase.status = "skipped"
-                    logger.warning("Phase skipped (dependency failed): %s", phase.studio)
+                    logger.warning(
+                        "Phase skipped (dependency failed): %s", phase.studio
+                    )
                     continue
 
             # Execute phase
@@ -258,6 +351,7 @@ class ProjectManager:
 
             try:
                 from kernel.orchestrator import get_orchestrator
+
                 orch = get_orchestrator()
 
                 # Include accumulated context from previous phases
@@ -281,12 +375,16 @@ class ProjectManager:
                     "success": ot.status == "completed",
                     "quality_score": ot.quality_score,
                     "model_used": ot.model_used,
-                    "files_created": ot.result.get("actions", {}).get("files_created", []),
+                    "files_created": ot.result.get("actions", {}).get(
+                        "files_created", []
+                    ),
                 }
                 phase.status = "completed" if ot.status == "completed" else "failed"
 
                 # Accumulate context for next phase
-                accumulated_context[f"phase_{i + 1}_output"] = phase.result.get("output", "")[:1000]
+                accumulated_context[f"phase_{i + 1}_output"] = phase.result.get(
+                    "output", ""
+                )[:1000]
                 accumulated_context[f"phase_{i + 1}_studio"] = phase.studio
 
             except Exception as e:
@@ -297,40 +395,45 @@ class ProjectManager:
 
             phase.duration_ms = (time.monotonic() - phase_start) * 1000
 
-            self._bus.publish_sync(Event(
-                type="project.phase_complete",
-                source="project_manager",
-                payload={
-                    "project_id": project.id,
-                    "phase": i + 1,
-                    "studio": phase.studio,
-                    "status": phase.status,
-                    "duration_ms": phase.duration_ms,
-                },
-            ))
+            self._bus.publish_sync(
+                Event(
+                    type="project.phase_complete",
+                    source="project_manager",
+                    payload={
+                        "project_id": project.id,
+                        "phase": i + 1,
+                        "studio": phase.studio,
+                        "status": phase.status,
+                        "duration_ms": phase.duration_ms,
+                    },
+                )
+            )
 
         project.status = "completed" if all_success else "failed"
         project.completed_at = datetime.now(timezone.utc).isoformat()
         project.total_duration_ms = (time.monotonic() - start) * 1000
 
-        self._bus.publish_sync(Event(
-            type="project.completed",
-            source="project_manager",
-            payload={
-                "project_id": project.id,
-                "status": project.status,
-                "phases_completed": sum(
-                    1 for p in project.phases if p.status == "completed"
-                ),
-                "total_phases": len(project.phases),
-                "duration_ms": project.total_duration_ms,
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="project.completed",
+                source="project_manager",
+                payload={
+                    "project_id": project.id,
+                    "status": project.status,
+                    "phases_completed": sum(
+                        1 for p in project.phases if p.status == "completed"
+                    ),
+                    "total_phases": len(project.phases),
+                    "duration_ms": project.total_duration_ms,
+                },
+            )
+        )
 
         # ── AUTO DEPLOYMENT ──
         if project.status == "completed":
             try:
                 from kernel.deployment_engine import get_deployment_engine
+
                 de = get_deployment_engine()
                 # Deploy the current workspace/root
                 de.deploy(str(self.cfg.root))
@@ -339,9 +442,11 @@ class ProjectManager:
 
         logger.info(
             "Project [%s] %s: %d/%d phases completed in %.0fms",
-            project.id, project.status,
+            project.id,
+            project.status,
             sum(1 for p in project.phases if p.status == "completed"),
-            len(project.phases), project.total_duration_ms,
+            len(project.phases),
+            project.total_duration_ms,
         )
 
         return project
@@ -370,10 +475,12 @@ class ProjectManager:
                 scores[template] = score
 
         if scores:
-            return max(scores, key=scores.get)
+            return max(scores, key=scores.get)  # type: ignore
 
         # Fallback heuristic
-        if any(w in goal_lower for w in ["build", "create", "make", "web", "app", "site"]):
+        if any(
+            w in goal_lower for w in ["build", "create", "make", "web", "app", "site"]
+        ):
             return "build_and_launch"
         if any(w in goal_lower for w in ["lead", "prospect", "find"]):
             return "lead_gen_pipeline"

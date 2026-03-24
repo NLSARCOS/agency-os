@@ -5,13 +5,12 @@ LeadOps Studio — Lead Generation Pipeline
 Uses: .agent/agents/explorer-agent.md
 Skills: systematic-debugging (for data analysis), python-patterns
 """
+
 from __future__ import annotations
 
 import csv
 import hashlib
-import json
 from io import StringIO
-from pathlib import Path
 from typing import Any
 
 from studios.base_studio import BaseStudio
@@ -40,15 +39,38 @@ class Studio(BaseStudio):
 
         # Extract target vertical/geography
         vertical = ""
-        for v in ["médico", "medico", "medical", "doctor", "salud", "health",
-                   "legal", "lawyer", "tech", "fintech", "saas", "ecommerce"]:
+        for v in [
+            "médico",
+            "medico",
+            "medical",
+            "doctor",
+            "salud",
+            "health",
+            "legal",
+            "lawyer",
+            "tech",
+            "fintech",
+            "saas",
+            "ecommerce",
+        ]:
             if v in task_lower:
                 vertical = v
                 break
 
         geography = ""
-        for g in ["ecuador", "colombia", "méxico", "mexico", "spain", "usa",
-                   "latam", "chile", "perú", "peru", "argentina"]:
+        for g in [
+            "ecuador",
+            "colombia",
+            "méxico",
+            "mexico",
+            "spain",
+            "usa",
+            "latam",
+            "chile",
+            "perú",
+            "peru",
+            "argentina",
+        ]:
             if g in task_lower:
                 geography = g
                 break
@@ -113,7 +135,9 @@ class Studio(BaseStudio):
             "steps": steps.get(operation, steps["discovery"]),
         }
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         """Execute leadops pipeline with real tool integration."""
         operation = plan["operation"]
 
@@ -186,7 +210,11 @@ class Studio(BaseStudio):
             "artifacts": [str(path)],
             "kpis": [
                 {"name": "discovery_executed", "value": 1, "unit": "count"},
-                {"name": "sources_found", "value": search_results.count("http"), "unit": "count"},
+                {
+                    "name": "sources_found",
+                    "value": search_results.count("http"),
+                    "unit": "count",
+                },
             ],
         }
 
@@ -220,7 +248,11 @@ class Studio(BaseStudio):
             "artifacts": [str(path)],
             "kpis": [
                 {"name": "scraping_executed", "value": 1, "unit": "count"},
-                {"name": "leads_extracted", "value": output.count("\n"), "unit": "count"},
+                {
+                    "name": "leads_extracted",
+                    "value": output.count("\n"),
+                    "unit": "count",
+                },
             ],
         }
 
@@ -268,14 +300,17 @@ class Studio(BaseStudio):
                         writer.writeheader()
                         writer.writerows(clean_rows)
             except Exception as e:
-                self.state.log_event("dedup_error", str(e), source="leadops", level="warning")
+                self.state.log_event(
+                    "dedup_error", str(e), source="leadops", level="warning"
+                )
 
         removed = total_raw - total_clean
         return {
             "output": (
                 f"Dedup complete: {total_raw} raw → {total_clean} clean "
-                f"({removed} duplicates removed, {removed/total_raw*100:.1f}% reduction)"
-                if total_raw > 0 else "No records processed"
+                f"({removed} duplicates removed, {removed / total_raw * 100:.1f}% reduction)"
+                if total_raw > 0
+                else "No records processed"
             ),
             "operation": "dedup",
             "kpis": [
@@ -345,7 +380,9 @@ class Studio(BaseStudio):
                         writer.writeheader()
                         writer.writerows(scored_rows)
             except Exception as e:
-                self.state.log_event("scoring_error", str(e), source="leadops", level="warning")
+                self.state.log_event(
+                    "scoring_error", str(e), source="leadops", level="warning"
+                )
 
         return {
             "output": (

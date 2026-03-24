@@ -5,12 +5,12 @@ Agency OS — Report Generator
 Generates system status reports in markdown and JSON.
 Replaces the old bash-only report script.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from kernel.config import get_config
 from kernel.state_manager import get_state
@@ -28,7 +28,7 @@ def generate_report(output_format: str = "markdown") -> str:
 
     # Recent missions
     recent_missions = state.get_missions(limit=10)
-    active_missions = state.get_missions(limit=10)
+    state.get_missions(limit=10)
 
     # Recent events
     recent_events = state.get_events(limit=20)
@@ -47,7 +47,9 @@ def generate_report(output_format: str = "markdown") -> str:
         }
         report_str = json.dumps(report_data, indent=2, default=str)
     else:
-        report_str = _build_markdown_report(now, cfg, stats, recent_missions, recent_events, recent_kpis)
+        report_str = _build_markdown_report(
+            now, cfg, stats, recent_missions, recent_events, recent_kpis
+        )
 
     # Save to reports directory
     report_path = cfg.reports_dir / f"report_{now.strftime('%Y%m%d_%H%M%S')}.md"
@@ -93,7 +95,13 @@ def _build_markdown_report(
         lines.append("| Status | Count |")
         lines.append("|--------|-------|")
         for status, count in sorted(mission_stats.items()):
-            emoji = {"queued": "⏳", "active": "🔵", "running": "🟢", "done": "✅", "failed": "❌"}.get(status, "⚪")
+            emoji = {
+                "queued": "⏳",
+                "active": "🔵",
+                "running": "🟢",
+                "done": "✅",
+                "failed": "❌",
+            }.get(status, "⚪")
             lines.append(f"| {emoji} {status.capitalize()} | {count} |")
         lines.append("")
     else:
@@ -115,8 +123,12 @@ def _build_markdown_report(
     if model_usage:
         lines.append("## 🤖 Model Usage")
         lines.append("")
-        lines.append("| Model | Calls | Tokens In | Tokens Out | Avg Latency | Failures |")
-        lines.append("|-------|-------|-----------|------------|-------------|----------|")
+        lines.append(
+            "| Model | Calls | Tokens In | Tokens Out | Avg Latency | Failures |"
+        )
+        lines.append(
+            "|-------|-------|-----------|------------|-------------|----------|"
+        )
         for m in model_usage:
             lines.append(
                 f"| {m['model_name']} | {m['calls']} | "
@@ -144,8 +156,12 @@ def _build_markdown_report(
         lines.append("## 📝 Recent Events")
         lines.append("")
         for e in events[:10]:
-            level_emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌"}.get(e.get("level", "info"), "⚪")
-            lines.append(f"- {level_emoji} **{e['event_type']}** — {e['message'][:100]}")
+            level_emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌"}.get(
+                e.get("level", "info"), "⚪"
+            )
+            lines.append(
+                f"- {level_emoji} **{e['event_type']}** — {e['message'][:100]}"
+            )
         lines.append("")
 
     # Recent missions
@@ -155,7 +171,13 @@ def _build_markdown_report(
         lines.append("| ID | Mission | Studio | Status | Created |")
         lines.append("|----|---------|--------|--------|---------|")
         for m in missions[:10]:
-            status_emoji = {"queued": "⏳", "active": "🔵", "running": "🟢", "done": "✅", "failed": "❌"}.get(m.get("status", ""), "⚪")
+            status_emoji = {
+                "queued": "⏳",
+                "active": "🔵",
+                "running": "🟢",
+                "done": "✅",
+                "failed": "❌",
+            }.get(m.get("status", ""), "⚪")
             lines.append(
                 f"| {m['id']} | {m['name'][:40]} | {m['studio']} | "
                 f"{status_emoji} {m.get('status', '')} | {m['created_at'][:19]} |"

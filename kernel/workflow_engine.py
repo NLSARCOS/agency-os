@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Workflow Engine
+Agency OS v5.0.0 — Workflow Engine
 
 DAG-based workflow execution engine inspired by LangGraph.
 
@@ -12,12 +12,12 @@ Features:
 - Error recovery loops with retry
 - Persistent checkpoint/resume after crashes
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import time
-import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
-import yaml
+import yaml  # type: ignore
 
 from kernel.config import get_config
 from kernel.event_bus import Event, get_event_bus
@@ -54,6 +54,7 @@ class WorkflowStatus(str, Enum):
 @dataclass
 class WorkflowNode:
     """A single node in a workflow graph."""
+
     id: str
     name: str
     type: str = "agent"  # agent, tool, condition, human, parallel_group
@@ -80,6 +81,7 @@ class WorkflowNode:
 @dataclass
 class WorkflowDef:
     """Complete workflow definition."""
+
     id: str
     name: str
     description: str = ""
@@ -92,6 +94,7 @@ class WorkflowDef:
 @dataclass
 class WorkflowRun:
     """A running instance of a workflow."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:12])
     workflow_id: str = ""
     mission_id: int | None = None
@@ -112,11 +115,10 @@ class WorkflowRun:
 NodeExecutor = Callable[[WorkflowNode, dict[str, Any]], dict[str, Any]]
 
 
-def _execute_agent_node(
-    node: WorkflowNode, context: dict[str, Any]
-) -> dict[str, Any]:
+def _execute_agent_node(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
     """Execute a node using an agent."""
     from kernel.agent_manager import get_agent_manager
+
     mgr = get_agent_manager()
 
     # Inject previous results into task
@@ -135,11 +137,10 @@ def _execute_agent_node(
     return result
 
 
-def _execute_tool_node(
-    node: WorkflowNode, context: dict[str, Any]
-) -> dict[str, Any]:
+def _execute_tool_node(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
     """Execute a node using a tool directly."""
     from kernel.tool_executor import get_tool_executor
+
     executor = get_tool_executor()
 
     params = dict(node.params)
@@ -172,7 +173,6 @@ def _execute_condition_node(
     """Evaluate a condition for branching (safe, no eval)."""
     try:
         import ast
-        import operator
 
         # Build evaluation context from previous results
         eval_ctx: dict[str, Any] = {}
@@ -192,17 +192,38 @@ def _execute_condition_node(
             tree = ast.parse(condition, mode="eval")
             for n in ast.walk(tree):
                 allowed = (
-                    ast.Expression, ast.Compare, ast.BoolOp, ast.UnaryOp,
-                    ast.Constant, ast.Name, ast.Attribute, ast.Subscript,
-                    ast.Load, ast.Eq, ast.NotEq, ast.Lt, ast.Gt, ast.LtE,
-                    ast.GtE, ast.Is, ast.IsNot, ast.In, ast.NotIn,
-                    ast.And, ast.Or, ast.Not, ast.Index, ast.Slice,
+                    ast.Expression,
+                    ast.Compare,
+                    ast.BoolOp,
+                    ast.UnaryOp,
+                    ast.Constant,
+                    ast.Name,
+                    ast.Attribute,
+                    ast.Subscript,
+                    ast.Load,
+                    ast.Eq,
+                    ast.NotEq,
+                    ast.Lt,
+                    ast.Gt,
+                    ast.LtE,
+                    ast.GtE,
+                    ast.Is,
+                    ast.IsNot,
+                    ast.In,
+                    ast.NotIn,
+                    ast.And,
+                    ast.Or,
+                    ast.Not,
+                    ast.Index,
+                    ast.Slice,
                 )
                 if not isinstance(n, allowed):
                     raise ValueError(f"Unsafe AST node: {type(n).__name__}")
             # Only eval with restricted context, no builtins
             condition_result = bool(
-                eval(compile(tree, "<condition>", "eval"), {"__builtins__": {}}, eval_ctx)
+                eval(
+                    compile(tree, "<condition>", "eval"), {"__builtins__": {}}, eval_ctx
+                )
             )
 
         return {
@@ -271,9 +292,7 @@ class WorkflowEngine:
         logger.info("Loaded %d workflows", count)
         return count
 
-    def _parse_workflow_yaml(
-        self, path: Path, studio: str
-    ) -> WorkflowDef | None:
+    def _parse_workflow_yaml(self, path: Path, studio: str) -> WorkflowDef | None:
         """Parse a workflow YAML file."""
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -284,21 +303,23 @@ class WorkflowEngine:
         wf_id = data.get("id", path.stem)
         nodes = []
         for node_data in data["nodes"]:
-            nodes.append(WorkflowNode(
-                id=node_data["id"],
-                name=node_data.get("name", node_data["id"]),
-                type=node_data.get("type", "agent"),
-                agent=node_data.get("agent", ""),
-                tool=node_data.get("tool", ""),
-                task=node_data.get("task", ""),
-                params=node_data.get("params", {}),
-                depends_on=node_data.get("depends_on", []),
-                condition=node_data.get("condition", ""),
-                on_success=node_data.get("on_success", ""),
-                on_failure=node_data.get("on_failure", ""),
-                max_retries=node_data.get("max_retries", 2),
-                timeout=node_data.get("timeout", 120.0),
-            ))
+            nodes.append(
+                WorkflowNode(
+                    id=node_data["id"],
+                    name=node_data.get("name", node_data["id"]),
+                    type=node_data.get("type", "agent"),
+                    agent=node_data.get("agent", ""),
+                    tool=node_data.get("tool", ""),
+                    task=node_data.get("task", ""),
+                    params=node_data.get("params", {}),
+                    depends_on=node_data.get("depends_on", []),
+                    condition=node_data.get("condition", ""),
+                    on_success=node_data.get("on_success", ""),
+                    on_failure=node_data.get("on_failure", ""),
+                    max_retries=node_data.get("max_retries", 2),
+                    timeout=node_data.get("timeout", 120.0),
+                )
+            )
 
         return WorkflowDef(
             id=wf_id,
@@ -367,15 +388,17 @@ class WorkflowEngine:
         skipped: set[str] = set()
 
         bus = get_event_bus()
-        bus.publish_sync(Event(
-            type="workflow.started",
-            payload={
-                "run_id": run.id,
-                "workflow": workflow.id,
-                "mission_id": mission_id,
-                "nodes": len(workflow.nodes),
-            },
-        ))
+        bus.publish_sync(
+            Event(
+                type="workflow.started",
+                payload={
+                    "run_id": run.id,
+                    "workflow": workflow.id,
+                    "mission_id": mission_id,
+                    "nodes": len(workflow.nodes),
+                },
+            )
+        )
 
         # Save initial checkpoint
         self._save_checkpoint(run, context)
@@ -398,10 +421,7 @@ class WorkflowEngine:
                     continue
 
                 # Check dependencies
-                deps_met = all(
-                    d in completed or d in skipped
-                    for d in node.depends_on
-                )
+                deps_met = all(d in completed or d in skipped for d in node.depends_on)
                 if not deps_met:
                     continue
 
@@ -430,15 +450,19 @@ class WorkflowEngine:
 
                     logger.info(
                         "Workflow %s paused at node '%s' for human input",
-                        run.id, node.id,
+                        run.id,
+                        node.id,
                     )
-                    bus.publish_sync(Event(
-                        type="workflow.paused",
-                        payload={
-                            "run_id": run.id, "node": node.id,
-                            "prompt": node.task,
-                        },
-                    ))
+                    bus.publish_sync(
+                        Event(
+                            type="workflow.paused",
+                            payload={
+                                "run_id": run.id,
+                                "node": node.id,
+                                "prompt": node.task,
+                            },
+                        )
+                    )
 
                     # Check for pre-submitted response
                     human_key = f"{run.id}:{node.id}"
@@ -466,7 +490,9 @@ class WorkflowEngine:
 
                 logger.info(
                     "Workflow %s executing node '%s' (type=%s)",
-                    run.id, node.id, node.type,
+                    run.id,
+                    node.id,
+                    node.type,
                 )
 
                 node_result = self._execute_node(node, context)
@@ -486,9 +512,11 @@ class WorkflowEngine:
                         if next_node:
                             # Skip nodes not on the chosen branch
                             for other_node in workflow.nodes:
-                                if (other_node.id not in completed
-                                        and other_node.id not in skipped
-                                        and node.id in other_node.depends_on):
+                                if (
+                                    other_node.id not in completed
+                                    and other_node.id not in skipped
+                                    and node.id in other_node.depends_on
+                                ):
                                     # Only keep the chosen branch
                                     pass  # Dependencies handle this naturally
                 else:
@@ -498,7 +526,9 @@ class WorkflowEngine:
                         node.status = NodeStatus.PENDING
                         logger.warning(
                             "Node '%s' failed, retry %d/%d",
-                            node.id, node.retry_count, node.max_retries,
+                            node.id,
+                            node.retry_count,
+                            node.max_retries,
                         )
                         continue
                     else:
@@ -533,30 +563,28 @@ class WorkflowEngine:
             n.status in (NodeStatus.COMPLETED, NodeStatus.SKIPPED)
             for n in workflow.nodes
         )
-        any_failed = any(
-            n.status == NodeStatus.FAILED for n in workflow.nodes
-        )
+        any(n.status == NodeStatus.FAILED for n in workflow.nodes)
 
         if run.status != WorkflowStatus.FAILED:
             run.status = (
-                WorkflowStatus.COMPLETED if all_success
-                else WorkflowStatus.FAILED
+                WorkflowStatus.COMPLETED if all_success else WorkflowStatus.FAILED
             )
 
-        bus.publish_sync(Event(
-            type="workflow.completed" if all_success else "workflow.failed",
-            payload={
-                "run_id": run.id,
-                "workflow": workflow.id,
-                "duration_ms": run.duration_ms,
-                "nodes_completed": len(completed),
-                "nodes_skipped": len(skipped),
-                "nodes_failed": sum(
-                    1 for n in workflow.nodes
-                    if n.status == NodeStatus.FAILED
-                ),
-            },
-        ))
+        bus.publish_sync(
+            Event(
+                type="workflow.completed" if all_success else "workflow.failed",
+                payload={
+                    "run_id": run.id,
+                    "workflow": workflow.id,
+                    "duration_ms": run.duration_ms,
+                    "nodes_completed": len(completed),
+                    "nodes_skipped": len(skipped),
+                    "nodes_failed": sum(
+                        1 for n in workflow.nodes if n.status == NodeStatus.FAILED
+                    ),
+                },
+            )
+        )
 
         return run
 
@@ -585,9 +613,7 @@ class WorkflowEngine:
 
     # ── Human-in-the-Loop ─────────────────────────────────────
 
-    def resume(
-        self, run_id: str, human_response: str
-    ) -> WorkflowRun | None:
+    def resume(self, run_id: str, human_response: str) -> WorkflowRun | None:
         """Resume a paused workflow with human input."""
         run = self._runs.get(run_id)
         if not run or run.status != WorkflowStatus.PAUSED:
@@ -610,9 +636,7 @@ class WorkflowEngine:
 
     # ── Checkpoints ───────────────────────────────────────────
 
-    def _save_checkpoint(
-        self, run: WorkflowRun, context: dict[str, Any]
-    ) -> None:
+    def _save_checkpoint(self, run: WorkflowRun, context: dict[str, Any]) -> None:
         """Save workflow state for resume after crash."""
         run.checkpoint = {
             "context": {
@@ -668,7 +692,7 @@ class WorkflowEngine:
     def list_runs(self, status: str | None = None) -> list[dict]:
         runs = self._runs.values()
         if status:
-            runs = [r for r in runs if r.status.value == status]
+            runs = [r for r in runs if r.status.value == status]  # type: ignore
         return [
             {
                 "id": r.id,
@@ -689,16 +713,22 @@ class WorkflowEngine:
 
 # ── Builder Pattern ───────────────────────────────────────────
 
+
 class WorkflowBuilder:
     """Fluent builder for creating workflows in code."""
 
     def __init__(
-        self, workflow_id: str, name: str,
-        studio: str = "", description: str = "",
+        self,
+        workflow_id: str,
+        name: str,
+        studio: str = "",
+        description: str = "",
     ) -> None:
         self._wf = WorkflowDef(
-            id=workflow_id, name=name,
-            studio=studio, description=description,
+            id=workflow_id,
+            name=name,
+            studio=studio,
+            description=description,
         )
 
     def agent_node(
@@ -710,12 +740,17 @@ class WorkflowBuilder:
         depends_on: list[str] | None = None,
         **kwargs: Any,
     ) -> WorkflowBuilder:
-        self._wf.nodes.append(WorkflowNode(
-            id=node_id, name=name or node_id,
-            type="agent", agent=agent, task=task,
-            depends_on=depends_on or [],
-            **kwargs,
-        ))
+        self._wf.nodes.append(
+            WorkflowNode(
+                id=node_id,
+                name=name or node_id,
+                type="agent",
+                agent=agent,
+                task=task,
+                depends_on=depends_on or [],
+                **kwargs,
+            )
+        )
         return self
 
     def tool_node(
@@ -728,13 +763,18 @@ class WorkflowBuilder:
         agent: str = "system",
         **kwargs: Any,
     ) -> WorkflowBuilder:
-        self._wf.nodes.append(WorkflowNode(
-            id=node_id, name=name or node_id,
-            type="tool", tool=tool, agent=agent,
-            params=params or {},
-            depends_on=depends_on or [],
-            **kwargs,
-        ))
+        self._wf.nodes.append(
+            WorkflowNode(
+                id=node_id,
+                name=name or node_id,
+                type="tool",
+                tool=tool,
+                agent=agent,
+                params=params or {},
+                depends_on=depends_on or [],
+                **kwargs,
+            )
+        )
         return self
 
     def condition_node(
@@ -746,12 +786,17 @@ class WorkflowBuilder:
         name: str = "",
         depends_on: list[str] | None = None,
     ) -> WorkflowBuilder:
-        self._wf.nodes.append(WorkflowNode(
-            id=node_id, name=name or node_id,
-            type="condition", condition=condition,
-            on_success=on_success, on_failure=on_failure,
-            depends_on=depends_on or [],
-        ))
+        self._wf.nodes.append(
+            WorkflowNode(
+                id=node_id,
+                name=name or node_id,
+                type="condition",
+                condition=condition,
+                on_success=on_success,
+                on_failure=on_failure,
+                depends_on=depends_on or [],
+            )
+        )
         return self
 
     def human_node(
@@ -761,11 +806,15 @@ class WorkflowBuilder:
         name: str = "",
         depends_on: list[str] | None = None,
     ) -> WorkflowBuilder:
-        self._wf.nodes.append(WorkflowNode(
-            id=node_id, name=name or node_id,
-            type="human", task=prompt,
-            depends_on=depends_on or [],
-        ))
+        self._wf.nodes.append(
+            WorkflowNode(
+                id=node_id,
+                name=name or node_id,
+                type="human",
+                task=prompt,
+                depends_on=depends_on or [],
+            )
+        )
         return self
 
     def build(self) -> WorkflowDef:
@@ -773,6 +822,7 @@ class WorkflowBuilder:
 
 
 # ── Convenience ───────────────────────────────────────────────
+
 
 def get_workflow_engine() -> WorkflowEngine:
     engine = WorkflowEngine()

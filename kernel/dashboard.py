@@ -1,7 +1,6 @@
 """Agency OS — Web Dashboard (FastAPI + embedded UI)."""
-import json
+
 import os
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -14,6 +13,7 @@ app = FastAPI(title="Agency OS Dashboard", version="5.0")
 
 
 # ── API Endpoints ─────────────────────────────────────────
+
 
 @app.get("/api/stats")
 def api_stats():

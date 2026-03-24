@@ -5,11 +5,11 @@ Agency OS — Cross-Platform Scheduler
 Python-based scheduler that replaces cron dependency.
 Works on both Linux and macOS. Runs as daemon or one-shot.
 """
+
 from __future__ import annotations
 
 import logging
 import signal
-import sys
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -82,6 +82,7 @@ def _import_function(path: str) -> Callable:
     """Import a function from a dotted path like 'module.submodule:function'."""
     module_path, func_name = path.rsplit(":", 1)
     import importlib
+
     module = importlib.import_module(module_path)
     return getattr(module, func_name)
 
@@ -120,15 +121,15 @@ class AgencyScheduler:
                 continue
 
             # Register with schedule library
-            job = schedule.every(interval).minutes.do(
-                self._run_job, name=name, func=func
+            schedule.every(interval).minutes.do(self._run_job, name=name, func=func)
+            self._jobs.append(
+                {
+                    "name": name,
+                    "interval_minutes": interval,
+                    "function": func_path,
+                    "description": job_cfg.get("description", ""),
+                }
             )
-            self._jobs.append({
-                "name": name,
-                "interval_minutes": interval,
-                "function": func_path,
-                "description": job_cfg.get("description", ""),
-            })
             logger.info("Scheduled job: %s (every %d min)", name, interval)
 
         self.state.log_event(
@@ -142,7 +143,7 @@ class AgencyScheduler:
         start = time.monotonic()
         try:
             logger.info("Running job: %s", name)
-            result = func()
+            func()
             duration = time.monotonic() - start
 
             self.state.log_event(
@@ -175,18 +176,22 @@ class AgencyScheduler:
                 start = time.monotonic()
                 result = func()
                 duration = time.monotonic() - start
-                results.append({
-                    "job": name,
-                    "status": "ok",
-                    "duration": round(duration, 2),
-                    "result": str(result)[:200] if result else "",
-                })
+                results.append(
+                    {
+                        "job": name,
+                        "status": "ok",
+                        "duration": round(duration, 2),
+                        "result": str(result)[:200] if result else "",
+                    }
+                )
             except Exception as e:
-                results.append({
-                    "job": name,
-                    "status": "error",
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "job": name,
+                        "status": "error",
+                        "error": str(e),
+                    }
+                )
         return results
 
     def start_daemon(self) -> None:
@@ -208,6 +213,9 @@ class AgencyScheduler:
         )
         logger.info("Agency OS Scheduler started. Press Ctrl+C to stop.")
 
+        # Also start the API server in the background for OpenClaw integrations
+        self._start_api_server()
+
         while self._running:
             schedule.run_pending()
             time.sleep(10)  # Check every 10 seconds
@@ -222,6 +230,26 @@ class AgencyScheduler:
     def stop(self) -> None:
         """Stop the scheduler daemon."""
         self._running = False
+
+    def _start_api_server(self) -> None:
+        """Start the API server in a background thread for external integrations."""
+        try:
+            from kernel.api_server import run_server
+            import threading
+            import os
+
+            port = int(os.environ.get("AGENCY_API_PORT", "8080"))
+            
+            thread = threading.Thread(
+                target=run_server,
+                kwargs={"host": "0.0.0.0", "port": port},
+                daemon=True,
+                name="agency-api-thread"
+            )
+            thread.start()
+            logger.info("API server auto-started on port %d", port)
+        except Exception as e:
+            logger.error("Failed to start API server thread: %s", e)
 
     def get_status(self) -> dict:
         """Get scheduler status."""
@@ -241,10 +269,11 @@ class AgencyScheduler:
 def run_cycle() -> dict:
     """Convenience: run one mission cycle. Used by scheduler."""
     from kernel.mission_engine import MissionEngine
+
     engine = MissionEngine()
     results = engine.run_cycle()
     return {
         "executed": len(results),
-        "done": sum(1 for r in results if r.get("status") == "done"),
-        "failed": sum(1 for r in results if r.get("status") == "failed"),
+        "done": sum(1 for r in results if r.get("status") == "done"),  # type: ignore
+        "failed": sum(1 for r in results if r.get("status") == "failed"),  # type: ignore
     }

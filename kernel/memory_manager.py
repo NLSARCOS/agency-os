@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Memory Manager
+Agency OS v5.0.0 — Memory Manager
 
 Manages agent memory at two levels:
 - Short-term: Conversation context per agent (in DB)
@@ -9,20 +9,19 @@ Manages agent memory at two levels:
 Inspired by CrewAI memory + LangGraph state persistence.
 No external vector DB required — uses built-in TF-IDF for similarity.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import math
 import re
-import sqlite3
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from kernel.config import get_config
 from kernel.state_manager import get_state
 
 logger = logging.getLogger("agency.memory")
@@ -31,6 +30,7 @@ logger = logging.getLogger("agency.memory")
 @dataclass
 class MemoryEntry:
     """A single memory entry."""
+
     id: int = 0
     agent_id: str = ""
     role: str = ""  # user, assistant, system, knowledge
@@ -44,6 +44,7 @@ class MemoryEntry:
 @dataclass
 class KnowledgeEntry:
     """A long-term knowledge item shared across agents."""
+
     id: int = 0
     topic: str = ""
     content: str = ""
@@ -55,6 +56,7 @@ class KnowledgeEntry:
 
 
 # ── TF-IDF Similarity (No External Deps) ─────────────────────
+
 
 def _tokenize(text: str) -> list[str]:
     """Simple word tokenizer."""
@@ -103,8 +105,8 @@ def _tfidf_similarity(query: str, documents: list[str]) -> list[float]:
         # Cosine similarity
         all_terms = set(query_vec) | set(doc_vec)
         dot = sum(query_vec.get(t, 0) * doc_vec.get(t, 0) for t in all_terms)
-        mag_q = math.sqrt(sum(v ** 2 for v in query_vec.values())) or 1
-        mag_d = math.sqrt(sum(v ** 2 for v in doc_vec.values())) or 1
+        mag_q = math.sqrt(sum(v**2 for v in query_vec.values())) or 1
+        mag_d = math.sqrt(sum(v**2 for v in doc_vec.values())) or 1
         similarities.append(dot / (mag_q * mag_d))
 
     return similarities
@@ -126,11 +128,11 @@ class MemoryManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    cls._instance._initialized = False  # type: ignore
         return cls._instance
 
     def __init__(self) -> None:
-        if self._initialized:
+        if self._initialized:  # type: ignore
             return
         self._initialized = True
         self._state = get_state()
@@ -174,12 +176,16 @@ class MemoryManager:
                    (agent_id, role, content, mission_id, timestamp, metadata)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (
-                    agent_id, role, content[:2000], mission_id, now,
+                    agent_id,
+                    role,
+                    content[:2000],
+                    mission_id,
+                    now,
                     json.dumps(metadata or {}),
                 ),
             )
             self._state._conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid  # type: ignore
 
     def recall(
         self,
@@ -205,8 +211,10 @@ class MemoryManager:
 
         return [
             MemoryEntry(
-                id=r["id"], agent_id=r["agent_id"],
-                role=r["role"], content=r["content"],
+                id=r["id"],
+                agent_id=r["agent_id"],
+                role=r["role"],
+                content=r["content"],
                 mission_id=r["mission_id"],
                 timestamp=r["timestamp"],
                 metadata=json.loads(r["metadata"] or "{}"),
@@ -243,8 +251,10 @@ class MemoryManager:
 
         return [
             MemoryEntry(
-                id=r["id"], agent_id=r["agent_id"],
-                role=r["role"], content=r["content"],
+                id=r["id"],
+                agent_id=r["agent_id"],
+                role=r["role"],
+                content=r["content"],
                 mission_id=r["mission_id"],
                 timestamp=r["timestamp"],
                 metadata=json.loads(r["metadata"] or "{}"),
@@ -306,11 +316,17 @@ class MemoryManager:
                     """INSERT INTO knowledge
                        (topic, content, source_agent, tags, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (topic, content[:5000], source_agent,
-                     json.dumps(tags or []), now, now),
+                    (
+                        topic,
+                        content[:5000],
+                        source_agent,
+                        json.dumps(tags or []),
+                        now,
+                        now,
+                    ),
                 )
                 self._state._conn.commit()
-                return cur.lastrowid
+                return cur.lastrowid  # type: ignore
 
     def query_knowledge(
         self,
@@ -325,8 +341,7 @@ class MemoryManager:
                 "SELECT * FROM knowledge ORDER BY updated_at DESC LIMIT 500"
             ).fetchall()
             rows = [
-                r for r in rows
-                if any(t in json.loads(r["tags"] or "[]") for t in tags)
+                r for r in rows if any(t in json.loads(r["tags"] or "[]") for t in tags)
             ]
         else:
             rows = self._state._conn.execute(
@@ -354,16 +369,18 @@ class MemoryManager:
                     "UPDATE knowledge SET access_count = access_count + 1 WHERE id = ?",
                     (r["id"],),
                 )
-                results.append(KnowledgeEntry(
-                    id=r["id"],
-                    topic=r["topic"],
-                    content=r["content"],
-                    source_agent=r["source_agent"],
-                    tags=json.loads(r["tags"] or "[]"),
-                    access_count=r["access_count"],
-                    created_at=r["created_at"],
-                    updated_at=r["updated_at"],
-                ))
+                results.append(
+                    KnowledgeEntry(
+                        id=r["id"],
+                        topic=r["topic"],
+                        content=r["content"],
+                        source_agent=r["source_agent"],
+                        tags=json.loads(r["tags"] or "[]"),
+                        access_count=r["access_count"],
+                        created_at=r["created_at"],
+                        updated_at=r["updated_at"],
+                    )
+                )
 
         if results:
             self._state._conn.commit()
@@ -379,7 +396,8 @@ class MemoryManager:
         ).fetchall()
         return [
             KnowledgeEntry(
-                id=r["id"], topic=r["topic"],
+                id=r["id"],
+                topic=r["topic"],
                 content=r["content"][:200],
                 source_agent=r["source_agent"],
                 tags=json.loads(r["tags"] or "[]"),
@@ -408,7 +426,9 @@ class MemoryManager:
         )
         logger.info(
             "Agent '%s' shared knowledge on '%s' (id=%d)",
-            from_agent, topic, knowledge_id,
+            from_agent,
+            topic,
+            knowledge_id,
         )
         return knowledge_id
 

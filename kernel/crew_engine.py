@@ -8,10 +8,10 @@ Auto-assemble optimal agent crews for any task:
 - Crew history: learn which combos succeed/fail
 - Performance feedback: successful crews boost priority
 """
+
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +24,7 @@ logger = logging.getLogger("agency.crew")
 @dataclass
 class CrewMember:
     """A selected agent with role and confidence."""
+
     agent_id: str
     role: str
     confidence: float  # 0-1 how suitable
@@ -33,6 +34,7 @@ class CrewMember:
 @dataclass
 class Crew:
     """An assembled crew ready for execution."""
+
     name: str
     task: str
     members: list[CrewMember] = field(default_factory=list)
@@ -99,14 +101,57 @@ CAPABILITY_MATRIX: dict[str, list[tuple[str, float]]] = {
 
 # Task keyword → domain mapping
 TASK_KEYWORDS: dict[str, list[str]] = {
-    "development": ["code", "build", "api", "implement", "feature", "fix", "bug", "deploy", "test", "refactor"],
-    "marketing": ["campaign", "content", "seo", "blog", "email", "funnel", "brand", "social"],
+    "development": [
+        "code",
+        "build",
+        "api",
+        "implement",
+        "feature",
+        "fix",
+        "bug",
+        "deploy",
+        "test",
+        "refactor",
+    ],
+    "marketing": [
+        "campaign",
+        "content",
+        "seo",
+        "blog",
+        "email",
+        "funnel",
+        "brand",
+        "social",
+    ],
     "sales": ["sell", "deal", "proposal", "negotiate", "close", "pipeline", "revenue"],
     "leadops": ["lead", "scrape", "prospect", "enrich", "outbound", "cold"],
-    "analytics": ["report", "metric", "kpi", "data", "dashboard", "analysis", "insight"],
+    "analytics": [
+        "report",
+        "metric",
+        "kpi",
+        "data",
+        "dashboard",
+        "analysis",
+        "insight",
+    ],
     "creative": ["design", "landing", "visual", "copy", "branding", "video"],
-    "security": ["security", "audit", "vulnerability", "pentest", "compliance", "owasp"],
-    "infrastructure": ["server", "docker", "ci/cd", "kubernetes", "cloud", "devops", "infra"],
+    "security": [
+        "security",
+        "audit",
+        "vulnerability",
+        "pentest",
+        "compliance",
+        "owasp",
+    ],
+    "infrastructure": [
+        "server",
+        "docker",
+        "ci/cd",
+        "kubernetes",
+        "cloud",
+        "devops",
+        "infra",
+    ],
     "design": ["ui", "ux", "interface", "wireframe", "prototype", "figma"],
     "mobile": ["mobile", "ios", "android", "react native", "flutter", "app"],
     "planning": ["plan", "roadmap", "strategy", "sprint", "backlog", "prioritize"],
@@ -176,12 +221,14 @@ class CrewEngine:
             agent_def = self.am.get_agent(agent_id)
             skills = list(getattr(agent_def, "skills", [])) if agent_def else []
 
-            members.append(CrewMember(
-                agent_id=agent_id,
-                role=role,
-                confidence=round(confidence, 2),
-                skills=skills[:5],
-            ))
+            members.append(
+                CrewMember(
+                    agent_id=agent_id,
+                    role=role,
+                    confidence=round(confidence, 2),
+                    skills=skills[:5],
+                )
+            )
 
         # 4. Determine if cross-studio
         unique_domains = set()
@@ -199,15 +246,14 @@ class CrewEngine:
 
         logger.info(
             "Crew assembled: %s — %d members %s",
-            crew.name, len(crew.members),
+            crew.name,
+            len(crew.members),
             "(cross-studio)" if cross_studio else "",
         )
 
         return crew
 
-    def record_outcome(
-        self, crew: Crew, success: bool, notes: str = ""
-    ) -> None:
+    def record_outcome(self, crew: Crew, success: bool, notes: str = "") -> None:
         """Record crew performance for learning."""
         entry = {
             "crew_name": crew.name,
@@ -243,9 +289,7 @@ class CrewEngine:
             "total_crews": len(self._history),
             "success_rate": round(successes / len(self._history) * 100, 1),
             "top_agents": self._top_agents(),
-            "domains": list(set(
-                d for h in self._history for d in h["domains"]
-            )),
+            "domains": list(set(d for h in self._history for d in h["domains"])),
         }
 
     def _detect_domains(self, task: str) -> list[str]:
@@ -262,7 +306,8 @@ class CrewEngine:
     def _get_history_boost(self, agent_id: str, domain: str) -> float:
         """Get historical performance boost for an agent in a domain."""
         relevant = [
-            h for h in self._history
+            h
+            for h in self._history
             if agent_id in h["members"] and domain in h["domains"]
         ]
         if not relevant:

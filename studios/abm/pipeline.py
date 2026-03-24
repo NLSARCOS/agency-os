@@ -5,6 +5,7 @@ ABM Studio — Account-Based Marketing Pipeline
 Uses: .agent/agents/product-manager.md
 Skills: brainstorming, plan-writing
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -71,7 +72,9 @@ class Studio(BaseStudio):
         }
         return {**intake_result, "steps": steps.get(op, steps["targeting"])}
 
-    def execute(self, plan: dict[str, Any], task_id: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, plan: dict[str, Any], task_id: int | None = None
+    ) -> dict[str, Any]:
         prompt = (
             f"## ABM Task — {plan['operation'].upper()}\n"
             f"**Task:** {plan['task']}\n"
@@ -87,6 +90,10 @@ class Studio(BaseStudio):
             "output": output,
             "operation": plan["operation"],
             "kpis": [
-                {"name": f"abm_{plan['operation']}_completed", "value": 1, "unit": "count"},
+                {
+                    "name": f"abm_{plan['operation']}_completed",
+                    "value": 1,
+                    "unit": "count",
+                },
             ],
         }

@@ -36,3 +36,17 @@ include = ["kernel*", "studios*", "jobs*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+exclude = [
+    ".git",
+    ".venv",
+    "data",
+    "logs",
+]
+
+[tool.mypy]
+exclude = [
+    "data/",
+    "logs/",
+]

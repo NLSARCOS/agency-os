@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Event Bus
+Agency OS v5.0.0 — Event Bus
 
 Async pub/sub event system for inter-agent communication.
 Decouples agent interactions and enables delegation chains.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -31,6 +31,7 @@ class EventPriority(str, Enum):
 @dataclass
 class Event:
     """Immutable event object flowing through the bus."""
+
     type: str
     payload: dict[str, Any]
     source: str = ""
@@ -80,11 +81,11 @@ class EventBus:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    cls._instance._initialized = False  # type: ignore
         return cls._instance
 
     def __init__(self) -> None:
-        if self._initialized:
+        if self._initialized:  # type: ignore
             return
         self._initialized = True
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
@@ -158,13 +159,15 @@ class EventBus:
                 self._stats["errors"] += 1
                 logger.error(
                     "Error in handler '%s' for event '%s': %s",
-                    handler.__name__, event.type, e,
+                    handler.__name__,
+                    event.type,
+                    e,
                 )
 
         # Also run sync handlers
-        for handler in self._sync_handlers.get(event.type, []):
+        for handler in self._sync_handlers.get(event.type, []):  # type: ignore
             try:
-                handler(event)
+                handler(event)  # type: ignore
                 self._stats["delivered"] += 1
             except Exception as e:
                 self._stats["errors"] += 1
@@ -185,9 +188,7 @@ class EventBus:
 
     # ── Request/Response ──────────────────────────────────────
 
-    async def request(
-        self, event: Event, timeout: float = 30.0
-    ) -> Event | None:
+    async def request(self, event: Event, timeout: float = 30.0) -> Event | None:
         """
         Send an event and wait for a reply.
         Implements request-response pattern for inter-agent calls.
@@ -239,7 +240,7 @@ class EventBus:
     def _record_history(self, event: Event) -> None:
         self._history.append(event)
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
     def get_history(
         self,
@@ -254,8 +255,11 @@ class EventBus:
             events = [e for e in events if e.source == source]
         return [
             {
-                "id": e.id, "type": e.type, "source": e.source,
-                "target": e.target, "priority": e.priority.value,
+                "id": e.id,
+                "type": e.type,
+                "source": e.source,
+                "target": e.target,
+                "priority": e.priority.value,
                 "timestamp": e.timestamp,
                 "payload_keys": list(e.payload.keys()),
             }

@@ -10,16 +10,15 @@ Transforms AI-generated text into REAL ACTIONS:
 
 This is what makes Agency OS an EXECUTOR, not just an advisor.
 """
+
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from kernel.config import get_config
 
@@ -29,6 +28,7 @@ logger = logging.getLogger("agency.actions")
 @dataclass
 class FileAction:
     """A file to create or modify."""
+
     path: str
     content: str
     language: str = ""
@@ -38,6 +38,7 @@ class FileAction:
 @dataclass
 class ShellAction:
     """A shell command to run."""
+
     command: str
     cwd: str = ""
     description: str = ""
@@ -46,6 +47,7 @@ class ShellAction:
 @dataclass
 class GitAction:
     """A git operation."""
+
     operation: str  # add | commit | push | create-repo
     message: str = ""
     files: list[str] = field(default_factory=list)
@@ -56,6 +58,7 @@ class GitAction:
 @dataclass
 class ActionPlan:
     """Parsed plan of actions from AI output."""
+
     files: list[FileAction] = field(default_factory=list)
     commands: list[ShellAction] = field(default_factory=list)
     git: list[GitAction] = field(default_factory=list)
@@ -66,6 +69,7 @@ class ActionPlan:
 @dataclass
 class ActionResult:
     """Result of executing an action plan."""
+
     success: bool = True
     files_created: list[str] = field(default_factory=list)
     files_modified: list[str] = field(default_factory=list)
@@ -89,11 +93,31 @@ class ActionExecutor:
     def __init__(self) -> None:
         self.cfg = get_config()
         self._safe_commands = {
-            "npm", "npx", "node", "python3", "python", "pip", "pip3",
-            "mkdir", "touch", "cp", "mv", "cat", "echo",
-            "git", "curl", "wget",
-            "pytest", "ruff", "black", "eslint", "prettier",
-            "cargo", "go", "deno", "bun",
+            "npm",
+            "npx",
+            "node",
+            "python3",
+            "python",
+            "pip",
+            "pip3",
+            "mkdir",
+            "touch",
+            "cp",
+            "mv",
+            "cat",
+            "echo",
+            "git",
+            "curl",
+            "wget",
+            "pytest",
+            "ruff",
+            "black",
+            "eslint",
+            "prettier",
+            "cargo",
+            "go",
+            "deno",
+            "bun",
         }
 
     def parse(self, ai_output: str, project_dir: str = "") -> ActionPlan:
@@ -144,7 +168,9 @@ class ActionExecutor:
                         logger.info("Deleted: %s", filepath)
                 else:
                     filepath.write_text(file_action.content, encoding="utf-8")
-                    logger.info("Created: %s (%d bytes)", filepath, len(file_action.content))
+                    logger.info(
+                        "Created: %s (%d bytes)", filepath, len(file_action.content)
+                    )
 
                     if file_action.action == "create":
                         result.files_created.append(str(filepath))
@@ -160,14 +186,18 @@ class ActionExecutor:
         for cmd_action in plan.commands:
             try:
                 if dry_run:
-                    result.commands_run.append({
-                        "command": cmd_action.command,
-                        "status": "dry_run",
-                    })
+                    result.commands_run.append(
+                        {
+                            "command": cmd_action.command,
+                            "status": "dry_run",
+                        }
+                    )
                     continue
 
                 if not self._is_safe_command(cmd_action.command):
-                    result.errors.append(f"Blocked unsafe command: {cmd_action.command}")
+                    result.errors.append(
+                        f"Blocked unsafe command: {cmd_action.command}"
+                    )
                     continue
 
                 cwd = cmd_action.cwd or work_dir
@@ -180,12 +210,14 @@ class ActionExecutor:
                     cwd=cwd,
                 )
 
-                result.commands_run.append({
-                    "command": cmd_action.command,
-                    "status": "success" if proc.returncode == 0 else "failed",
-                    "output": proc.stdout[-1000:] if proc.stdout else "",
-                    "error": proc.stderr[-500:] if proc.stderr else "",
-                })
+                result.commands_run.append(
+                    {
+                        "command": cmd_action.command,
+                        "status": "success" if proc.returncode == 0 else "failed",
+                        "output": proc.stdout[-1000:] if proc.stdout else "",
+                        "error": proc.stderr[-500:] if proc.stderr else "",
+                    }
+                )
 
                 if proc.returncode != 0:
                     result.errors.append(
@@ -231,10 +263,14 @@ class ActionExecutor:
         )
         for match in pattern1.finditer(text):
             lang, path, content = match.group(1), match.group(2).strip(), match.group(3)
-            files.append(FileAction(
-                path=path, content=content.strip() + "\n",
-                language=lang, action="create",
-            ))
+            files.append(
+                FileAction(
+                    path=path,
+                    content=content.strip() + "\n",
+                    language=lang,
+                    action="create",
+                )
+            )
 
         # Pattern 2: <!-- file: path/to/file.ext -->
         pattern2 = re.compile(
@@ -243,10 +279,13 @@ class ActionExecutor:
         )
         for match in pattern2.finditer(text):
             path, content = match.group(1).strip(), match.group(2)
-            files.append(FileAction(
-                path=path, content=content.strip() + "\n",
-                action="create",
-            ))
+            files.append(
+                FileAction(
+                    path=path,
+                    content=content.strip() + "\n",
+                    action="create",
+                )
+            )
 
         # Pattern 3: **`path/to/file.ext`** or ### `path/to/file.ext`
         pattern3 = re.compile(
@@ -258,10 +297,14 @@ class ActionExecutor:
             path, lang, content = match.group(1), match.group(2), match.group(3)
             # Skip if already captured
             if not any(f.path == path for f in files):
-                files.append(FileAction(
-                    path=path, content=content.strip() + "\n",
-                    language=lang, action="create",
-                ))
+                files.append(
+                    FileAction(
+                        path=path,
+                        content=content.strip() + "\n",
+                        language=lang,
+                        action="create",
+                    )
+                )
 
         return files
 
@@ -281,14 +324,18 @@ class ActionExecutor:
                 # Remove $ prompt
                 if line.startswith("$ "):
                     line = line[2:]
-                commands.append(ShellAction(
-                    command=line, cwd=project_dir,
-                ))
+                commands.append(
+                    ShellAction(
+                        command=line,
+                        cwd=project_dir,
+                    )
+                )
 
         # Also detect inline commands like: Run `npm install`
         inline = re.findall(
             r"(?:run|execute|type|enter|use):?\s*`([^`]+)`",
-            text, re.IGNORECASE,
+            text,
+            re.IGNORECASE,
         )
         for cmd in inline:
             if not any(c.command == cmd for c in commands):
@@ -302,20 +349,34 @@ class ActionExecutor:
         text_lower = text.lower()
 
         # Auto-add git add + commit if files were created
-        if any(phrase in text_lower for phrase in [
-            "commit", "push", "save changes", "git add",
-            "push to github", "push to remote",
-        ]):
-            actions.append(GitAction(
-                operation="add",
-                files=["."],
-            ))
-            actions.append(GitAction(
-                operation="commit",
-                message="feat: auto-generated by Agency OS",
-            ))
+        if any(
+            phrase in text_lower
+            for phrase in [
+                "commit",
+                "push",
+                "save changes",
+                "git add",
+                "push to github",
+                "push to remote",
+            ]
+        ):
+            actions.append(
+                GitAction(
+                    operation="add",
+                    files=["."],
+                )
+            )
+            actions.append(
+                GitAction(
+                    operation="commit",
+                    message="feat: auto-generated by Agency OS",
+                )
+            )
 
-        if any(phrase in text_lower for phrase in ["push", "push to github", "push to remote"]):
+        if any(
+            phrase in text_lower
+            for phrase in ["push", "push to github", "push to remote"]
+        ):
             actions.append(GitAction(operation="push"))
 
         return actions
@@ -338,9 +399,16 @@ class ActionExecutor:
         """Check if command is safe to run."""
         # Block dangerous patterns
         dangerous = [
-            "rm -rf /", "rm -rf /*", "mkfs", "dd if=",
-            ":(){", "> /dev/sda", "chmod 777 /",
-            "sudo rm", "| bash", "| sh",
+            "rm -rf /",
+            "rm -rf /*",
+            "mkfs",
+            "dd if=",
+            ":(){",
+            "> /dev/sda",
+            "chmod 777 /",
+            "sudo rm",
+            "| bash",
+            "| sh",
         ]
         cmd_lower = command.lower()
         for d in dangerous:
@@ -356,15 +424,21 @@ class ActionExecutor:
     # ── Git Execution ────────────────────────────────────────
 
     def _execute_git(
-        self, action: GitAction, work_dir: str, result: ActionResult,
+        self,
+        action: GitAction,
+        work_dir: str,
+        result: ActionResult,
     ) -> None:
         """Execute a git action."""
         if action.operation == "add":
             files = " ".join(action.files) if action.files else "."
             proc = subprocess.run(
                 f"git add {files}",
-                shell=True, capture_output=True, text=True,
-                cwd=work_dir, timeout=30,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=work_dir,
+                timeout=30,
             )
             result.git_operations.append(f"git add {files}")
 
@@ -372,8 +446,10 @@ class ActionExecutor:
             msg = action.message or "feat: auto-generated by Agency OS"
             proc = subprocess.run(
                 ["git", "commit", "-m", msg],
-                capture_output=True, text=True,
-                cwd=work_dir, timeout=30,
+                capture_output=True,
+                text=True,
+                cwd=work_dir,
+                timeout=30,
             )
             if proc.returncode == 0:
                 result.git_operations.append(f"git commit: {msg}")
@@ -385,8 +461,11 @@ class ActionExecutor:
         elif action.operation == "push":
             proc = subprocess.run(
                 f"git push {action.remote} {action.branch}",
-                shell=True, capture_output=True, text=True,
-                cwd=work_dir, timeout=60,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=work_dir,
+                timeout=60,
             )
             if proc.returncode == 0:
                 result.git_operations.append(
@@ -416,7 +495,9 @@ class ActionExecutor:
 
         logger.info(
             "Action plan: %d files, %d commands, %d git ops",
-            len(plan.files), len(plan.commands), len(plan.git),
+            len(plan.files),
+            len(plan.commands),
+            len(plan.git),
         )
 
         return self.execute(plan, project_dir, dry_run)

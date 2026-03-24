@@ -6,10 +6,11 @@ Automatic chaining: LeadOps → Sales → Marketing → Analytics.
 Define triggers between studios so one studio's output
 automatically feeds into another studio's input.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,6 +22,7 @@ logger = logging.getLogger("agency.pipelines")
 @dataclass
 class PipelineChain:
     """Defines an automatic chain between studios."""
+
     name: str = ""
     source_studio: str = ""
     target_studio: str = ""
@@ -33,6 +35,7 @@ class PipelineChain:
 @dataclass
 class ChainExecution:
     """Record of a chain execution."""
+
     chain_name: str
     source_studio: str
     target_studio: str
@@ -124,8 +127,11 @@ class CrossStudioPipelines:
     def get_chains_for_studio(self, source_studio: str) -> list[PipelineChain]:
         """Get all chains triggered by a specific studio."""
         return sorted(
-            [c for c in self._chains.values()
-             if c.source_studio == source_studio and c.enabled],
+            [
+                c
+                for c in self._chains.values()
+                if c.source_studio == source_studio and c.enabled
+            ],
             key=lambda c: c.priority,
         )
 
@@ -148,9 +154,7 @@ class CrossStudioPipelines:
                 continue
 
             # Transform output to input for next studio
-            target_input = self._transform_data(
-                chain.transform, source_studio, output
-            )
+            target_input = self._transform_data(chain.transform, source_studio, output)
 
             now = datetime.now(timezone.utc).isoformat()
             execution = ChainExecution(
@@ -166,20 +170,24 @@ class CrossStudioPipelines:
             self._history.append(execution)
 
             # Emit event for job queue to pick up
-            self._bus.publish_sync(Event(
-                type="chain.triggered",
-                source=source_studio,
-                payload={
-                    "chain": chain.name,
-                    "source": source_studio,
-                    "target": chain.target_studio,
-                    "input": target_input,
-                },
-            ))
+            self._bus.publish_sync(
+                Event(
+                    type="chain.triggered",
+                    source=source_studio,
+                    payload={
+                        "chain": chain.name,
+                        "source": source_studio,
+                        "target": chain.target_studio,
+                        "input": target_input,
+                    },
+                )
+            )
 
             logger.info(
                 "Chain triggered: %s → %s (%s)",
-                source_studio, chain.target_studio, chain.name,
+                source_studio,
+                chain.target_studio,
+                chain.name,
             )
 
         return executions
@@ -191,7 +199,9 @@ class CrossStudioPipelines:
         content = output.get("content", "")
         base = {
             "source_studio": source,
-            "source_content": content[:2000] if isinstance(content, str) else str(content)[:2000],
+            "source_content": content[:2000]
+            if isinstance(content, str)
+            else str(content)[:2000],
             "auto_triggered": True,
         }
 

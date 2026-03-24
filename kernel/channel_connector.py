@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Multi-Channel Connector
+Agency OS v5.0.0 — Multi-Channel Connector
 
 Routes messages from multiple channels through OpenClaw:
 - WhatsApp (via webhook)
@@ -11,9 +11,9 @@ Routes messages from multiple channels through OpenClaw:
 
 All channels converge to the unified mission engine.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -40,6 +40,7 @@ class ChannelType(str, Enum):
 @dataclass
 class IncomingMessage:
     """A message from any channel."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:12])
     channel: ChannelType = ChannelType.CLI
     sender: str = ""
@@ -54,6 +55,7 @@ class IncomingMessage:
 @dataclass
 class OutgoingMessage:
     """A response message to send back."""
+
     channel: ChannelType = ChannelType.CLI
     recipient: str = ""
     content: str = ""
@@ -82,17 +84,21 @@ class ChannelConnector:
         """
         logger.info(
             "Message from %s [%s]: %s",
-            msg.channel.value, msg.sender, msg.content[:80],
+            msg.channel.value,
+            msg.sender,
+            msg.content[:80],
         )
 
-        self.bus.publish_sync(Event(
-            type="channel.message_received",
-            payload={
-                "channel": msg.channel.value,
-                "sender": msg.sender,
-                "message_id": msg.id,
-            },
-        ))
+        self.bus.publish_sync(
+            Event(
+                type="channel.message_received",
+                payload={
+                    "channel": msg.channel.value,
+                    "sender": msg.sender,
+                    "message_id": msg.id,
+                },
+            )
+        )
 
         # Route the message
         intent = self._parse_intent(msg.content)
@@ -100,9 +106,7 @@ class ChannelConnector:
         operation = intent.get("operation", "")
 
         if studio_name:
-            response = self._execute_via_studio(
-                studio_name, msg.content, operation
-            )
+            response = self._execute_via_studio(studio_name, msg.content, operation)
         else:
             response = self._execute_via_openclaw(msg)
 
@@ -120,11 +124,33 @@ class ChannelConnector:
         # Studio routing keywords
         routes = {
             "dev": ["code", "develop", "build", "bug", "deploy", "test", "código"],
-            "marketing": ["campaign", "seo", "content", "marketing", "funnel", "campaña"],
-            "sales": ["sell", "outreach", "proposal", "close", "deal", "ventas", "prospecto"],
+            "marketing": [
+                "campaign",
+                "seo",
+                "content",
+                "marketing",
+                "funnel",
+                "campaña",
+            ],
+            "sales": [
+                "sell",
+                "outreach",
+                "proposal",
+                "close",
+                "deal",
+                "ventas",
+                "prospecto",
+            ],
             "leadops": ["lead", "scrape", "enrich", "prospect", "contacto"],
             "abm": ["account", "abm", "target", "icp", "persona"],
-            "analytics": ["report", "analytics", "kpi", "dashboard", "metrics", "reporte"],
+            "analytics": [
+                "report",
+                "analytics",
+                "kpi",
+                "dashboard",
+                "metrics",
+                "reporte",
+            ],
             "creative": ["design", "landing", "email", "copy", "creative", "diseño"],
         }
 
@@ -138,15 +164,14 @@ class ChannelConnector:
 
         return {"studio": "", "operation": "chat"}
 
-    def _execute_via_studio(
-        self, studio_name: str, task: str, operation: str
-    ) -> str:
+    def _execute_via_studio(self, studio_name: str, task: str, operation: str) -> str:
         """Execute via a specific studio pipeline."""
         if studio_name == "_system":
             return self._get_system_status()
 
         try:
             from studios.base_studio import load_all_studios
+
             studios = load_all_studios()
             studio = studios.get(studio_name)
 
@@ -167,23 +192,27 @@ class ChannelConnector:
         """Execute via OpenClaw for general chat."""
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
 
             if oc.is_available():
                 response = oc.chat(
                     messages=[
-                        {"role": "system", "content": (
-                            "You are Agency OS, an autonomous agency system. "
-                            "Help the user with their request."
-                        )},
-                        {"role": "user", "content": msg.content},
+                        {  # type: ignore
+                            "role": "system",
+                            "content": (
+                                "You are Agency OS, an autonomous agency system. "
+                                "Help the user with their request."
+                            ),
+                        },
+                        {"role": "user", "content": msg.content},  # type: ignore
                     ],
                     agent_id="system",
                 )
-                return response.get("content", "No response from OpenClaw")
+                return response.get("content", "No response from OpenClaw")  # type: ignore
             else:
                 return (
-                    "🤖 Agency OS v3.0 ready. OpenClaw is offline.\n\n"
+                    "🤖 Agency OS v5.0.0 ready. OpenClaw is offline.\n\n"
                     "Available studios: dev, marketing, sales, leadops, abm, analytics, creative\n"
                     "Try: 'generate leads for medical companies in Ecuador'"
                 )
@@ -203,7 +232,7 @@ class ChannelConnector:
         mem_stats = mm.get_stats()
 
         return (
-            f"🏢 **Agency OS v3.0 Status**\n\n"
+            f"🏢 **Agency OS v5.0.0 Status**\n\n"
             f"📊 Studios: {len(studios)} active\n"
             f"📋 Workflows: {len(we.list_workflows())} loaded\n"
             f"📝 Memories: {mem_stats['total_memories']}\n"

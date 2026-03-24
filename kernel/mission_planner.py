@@ -9,6 +9,7 @@ Example: "Crear una página web que llame personas y venderla"
   → MARKETING: create pitch/copy materials  (depends on DEV)
   → SALES: outreach strategy               (depends on MARKETING)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -96,13 +97,15 @@ class MissionPlanner:
         except json.JSONDecodeError:
             logger.error("Failed to parse AI plan: %s", resp.content[:200])
             # Fallback: single mission to default studio
-            missions_data = [{
-                "studio": "dev",
-                "name": objective[:60],
-                "description": objective,
-                "depends_on": [],
-                "priority": 1,
-            }]
+            missions_data = [
+                {
+                    "studio": "dev",
+                    "name": objective[:60],
+                    "description": objective,
+                    "depends_on": [],
+                    "priority": 1,
+                }
+            ]
 
         # Validate and build missions
         planned = []
@@ -110,16 +113,25 @@ class MissionPlanner:
             studio = m.get("studio", "dev").lower()
             if studio not in STUDIOS:
                 studio = "dev"
-            planned.append(PlannedMission(
-                studio=studio,
-                name=m.get("name", "Untitled"),
-                description=m.get("description", objective),
-                depends_on=[d.lower() for d in m.get("depends_on", []) if d.lower() in STUDIOS],
-                priority=min(max(int(m.get("priority", 3)), 1), 5),
-            ))
+            planned.append(
+                PlannedMission(
+                    studio=studio,
+                    name=m.get("name", "Untitled"),
+                    description=m.get("description", objective),
+                    depends_on=[
+                        d.lower()
+                        for d in m.get("depends_on", [])
+                        if d.lower() in STUDIOS
+                    ],
+                    priority=min(max(int(m.get("priority", 3)), 1), 5),
+                )
+            )
 
-        logger.info("Plan generated: %d sub-missions across %d studios",
-                     len(planned), len(set(m.studio for m in planned)))
+        logger.info(
+            "Plan generated: %d sub-missions across %d studios",
+            len(planned),
+            len(set(m.studio for m in planned)),
+        )
         return planned
 
     def enqueue(self, planned: list[PlannedMission], objective: str) -> list[int]:
@@ -138,12 +150,15 @@ class MissionPlanner:
                         f"Wave: {wave_num}/{len(waves)} | "
                         f"Dependencies: {', '.join(mission.depends_on) or 'none'}"
                     ),
-                    priority=mission.priority + (wave_num - 1),  # Later waves get lower priority
+                    priority=mission.priority
+                    + (wave_num - 1),  # Later waves get lower priority
                     force_studio=mission.studio,
                     metadata={
                         "planner": "mission_planner",
                         "objective": objective[:200],
-                        "objective_id": hashlib.md5(objective.encode()).hexdigest()[:12],
+                        "objective_id": hashlib.md5(objective.encode()).hexdigest()[
+                            :12
+                        ],
                         "wave": wave_num,
                         "total_waves": len(waves),
                         "total_missions": len(planned),
@@ -154,7 +169,11 @@ class MissionPlanner:
                 mission_ids.append(mid)
                 logger.info(
                     "Queued mission #%d: [%s] %s (wave %d, priority %d)",
-                    mid, mission.studio, mission.name, wave_num, mission.priority,
+                    mid,
+                    mission.studio,
+                    mission.name,
+                    wave_num,
+                    mission.priority,
                 )
 
         return mission_ids
@@ -186,7 +205,9 @@ class MissionPlanner:
             ],
         }
 
-    def _build_waves(self, missions: list[PlannedMission]) -> list[list[PlannedMission]]:
+    def _build_waves(
+        self, missions: list[PlannedMission]
+    ) -> list[list[PlannedMission]]:
         """Build execution waves from dependency graph."""
         resolved: set[str] = set()
         remaining = list(missions)

@@ -10,11 +10,11 @@ Autonomous learning from completed missions:
 
 Runs automatically in the heartbeat cycle.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -28,6 +28,7 @@ logger = logging.getLogger("agency.learner")
 @dataclass
 class MissionLearning:
     """A learning extracted from mission analysis."""
+
     id: str = ""
     category: str = ""  # model_perf | agent_skill | studio_pattern | failure
     insight: str = ""
@@ -116,7 +117,7 @@ class MissionLearner:
 
     def _analyze_model_performance(self) -> list[MissionLearning]:
         """Analyze which models perform best per studio."""
-        learnings = []
+        learnings = []  # type: ignore
         try:
             with self.state._lock:
                 rows = self.state._conn.execute("""
@@ -139,44 +140,49 @@ class MissionLearner:
             for r in rows:
                 studio = r["studio"] or "general"
                 data = dict(r)
-                if studio not in studio_best or data["success_rate"] > studio_best[studio]["success_rate"]:
+                if (
+                    studio not in studio_best
+                    or data["success_rate"] > studio_best[studio]["success_rate"]
+                ):
                     studio_best[studio] = data
 
             for studio, best in studio_best.items():
                 if best["success_rate"] >= 80:
-                    learnings.append(MissionLearning(
-                        category="model_perf",
-                        insight=(
-                            f"Best model for {studio}: {best['model_name']} "
-                            f"({best['success_rate']:.0f}% success, "
-                            f"{best['avg_latency']:.0f}ms avg latency)"
-                        ),
-                        confidence=min(best["success_rate"] / 100, 0.95),
-                        recommended_action=f"Prioritize {best['model_name']} for {studio} studio",
-                    ))
+                    learnings.append(
+                        MissionLearning(
+                            category="model_perf",
+                            insight=(
+                                f"Best model for {studio}: {best['model_name']} "
+                                f"({best['success_rate']:.0f}% success, "
+                                f"{best['avg_latency']:.0f}ms avg latency)"
+                            ),
+                            confidence=min(best["success_rate"] / 100, 0.95),
+                            recommended_action=f"Prioritize {best['model_name']} for {studio} studio",
+                        )
+                    )
 
             # Find problematic models (low success rate)
             for r in rows:
                 data = dict(r)
                 if data["success_rate"] < 50 and data["calls"] >= 5:
-                    learnings.append(MissionLearning(
-                        category="model_perf",
-                        insight=(
-                            f"Model {data['model_name']} underperforming in "
-                            f"{data['studio'] or 'general'}: {data['success_rate']:.0f}% success"
-                        ),
-                        confidence=0.7,
-                        recommended_action=f"Consider replacing {data['model_name']} in {data['studio']}",
-                    ))
+                    learnings.append(
+                        MissionLearning(
+                            category="model_perf",
+                            insight=(
+                                f"Model {data['model_name']} underperforming in "
+                                f"{data['studio'] or 'general'}: {data['success_rate']:.0f}% success"
+                            ),
+                            confidence=0.7,
+                            recommended_action=f"Consider replacing {data['model_name']} in {data['studio']}",
+                        )
+                    )
 
         except Exception as e:
             logger.error("Model performance analysis failed: %s", e)
 
         return learnings
 
-    def _analyze_studio_patterns(
-        self, missions: list
-    ) -> list[MissionLearning]:
+    def _analyze_studio_patterns(self, missions: list) -> list[MissionLearning]:
         """Analyze studio success patterns."""
         learnings = []
 
@@ -192,31 +198,37 @@ class MissionLearner:
                 studio_stats[studio]["fail"] += 1
 
         for studio, stats in studio_stats.items():
-            rate = (stats["success"] / stats["total"]) * 100 if stats["total"] > 0 else 0
+            rate = (
+                (stats["success"] / stats["total"]) * 100 if stats["total"] > 0 else 0
+            )
 
             if rate == 100 and stats["total"] >= 3:
-                learnings.append(MissionLearning(
-                    category="studio_pattern",
-                    insight=f"{studio} studio: 100% success rate ({stats['total']} missions)",
-                    confidence=0.9,
-                    recommended_action=f"{studio} is reliable, consider giving it more complex tasks",
-                ))
+                learnings.append(
+                    MissionLearning(
+                        category="studio_pattern",
+                        insight=f"{studio} studio: 100% success rate ({stats['total']} missions)",
+                        confidence=0.9,
+                        recommended_action=f"{studio} is reliable, consider giving it more complex tasks",
+                    )
+                )
             elif rate < 50 and stats["total"] >= 3:
-                learnings.append(MissionLearning(
-                    category="studio_pattern",
-                    insight=(
-                        f"{studio} studio struggling: {rate:.0f}% success rate "
-                        f"({stats['fail']}/{stats['total']} failed)"
-                    ),
-                    confidence=0.8,
-                    recommended_action=f"Review {studio} agent prompts and model assignment",
-                ))
+                learnings.append(
+                    MissionLearning(
+                        category="studio_pattern",
+                        insight=(
+                            f"{studio} studio struggling: {rate:.0f}% success rate "
+                            f"({stats['fail']}/{stats['total']} failed)"
+                        ),
+                        confidence=0.8,
+                        recommended_action=f"Review {studio} agent prompts and model assignment",
+                    )
+                )
 
         return learnings
 
     def _analyze_failures(self, missions: list) -> list[MissionLearning]:
         """Analyze failure patterns."""
-        learnings = []
+        learnings = []  # type: ignore
         failures = [m for m in missions if m["status"] == "failed"]
 
         if not failures:
@@ -239,41 +251,58 @@ class MissionLearner:
                 tool_error_count += 1
 
         if timeout_count >= 2:
-            learnings.append(MissionLearning(
-                category="failure",
-                insight=f"{timeout_count} missions failed due to timeouts",
-                confidence=0.85,
-                recommended_action="Increase timeout or break tasks into smaller steps",
-                source_missions=[m["id"] for m in failures if "timeout" in (m.get("result", "").lower())],
-            ))
+            learnings.append(
+                MissionLearning(
+                    category="failure",
+                    insight=f"{timeout_count} missions failed due to timeouts",
+                    confidence=0.85,
+                    recommended_action="Increase timeout or break tasks into smaller steps",
+                    source_missions=[
+                        m["id"]
+                        for m in failures
+                        if "timeout" in (m.get("result", "").lower())
+                    ],
+                )
+            )
 
         if model_error_count >= 2:
-            learnings.append(MissionLearning(
-                category="failure",
-                insight=f"{model_error_count} missions failed due to model/API errors",
-                confidence=0.8,
-                recommended_action="Check model availability, consider adding more fallback providers",
-                source_missions=[m["id"] for m in failures if "model" in (m.get("result", "").lower()) or "api" in (m.get("result", "").lower())],
-            ))
+            learnings.append(
+                MissionLearning(
+                    category="failure",
+                    insight=f"{model_error_count} missions failed due to model/API errors",
+                    confidence=0.8,
+                    recommended_action="Check model availability, consider adding more fallback providers",
+                    source_missions=[
+                        m["id"]
+                        for m in failures
+                        if "model" in (m.get("result", "").lower())
+                        or "api" in (m.get("result", "").lower())
+                    ],
+                )
+            )
 
         if tool_error_count >= 2:
-            learnings.append(MissionLearning(
-                category="failure",
-                insight=f"{tool_error_count} missions failed due to tool errors",
-                confidence=0.75,
-                recommended_action="Review tool permissions and sandbox configuration",
-            ))
+            learnings.append(
+                MissionLearning(
+                    category="failure",
+                    insight=f"{tool_error_count} missions failed due to tool errors",
+                    confidence=0.75,
+                    recommended_action="Review tool permissions and sandbox configuration",
+                )
+            )
 
         # Overall failure rate
         total = len(missions)
         fail_rate = (len(failures) / total) * 100 if total > 0 else 0
         if fail_rate > 30 and total >= 5:
-            learnings.append(MissionLearning(
-                category="failure",
-                insight=f"High overall failure rate: {fail_rate:.0f}% ({len(failures)}/{total})",
-                confidence=0.9,
-                recommended_action="System-wide review needed: prompts, models, or task complexity",
-            ))
+            learnings.append(
+                MissionLearning(
+                    category="failure",
+                    insight=f"High overall failure rate: {fail_rate:.0f}% ({len(failures)}/{total})",
+                    confidence=0.9,
+                    recommended_action="System-wide review needed: prompts, models, or task complexity",
+                )
+            )
 
         return learnings
 
@@ -311,9 +340,7 @@ class MissionLearner:
         except Exception as e:
             logger.error("Failed to store learning: %s", e)
 
-    def get_learnings(
-        self, category: str | None = None, limit: int = 20
-    ) -> list[dict]:
+    def get_learnings(self, category: str | None = None, limit: int = 20) -> list[dict]:
         """Retrieve stored learnings."""
         try:
             with self.state._lock:
@@ -342,10 +369,10 @@ class MissionLearner:
             "recommendations": [],
         }
 
-        for l in learnings:
-            cat = l.get("category", "")
-            insight = l.get("insight", "")
-            action = l.get("recommended_action", "")
+        for learning in learnings:
+            cat = learning.get("category", "")
+            insight = learning.get("insight", "")
+            action = learning.get("recommended_action", "")
 
             if cat == "model_perf":
                 summary["model_insights"].append(insight)

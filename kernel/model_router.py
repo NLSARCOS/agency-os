@@ -4,6 +4,7 @@ Agency OS — Multi-Model Router
 
 Multi-provider model router with health tracking and auto-fallback.
 """
+
 from __future__ import annotations
 
 import json as json_lib
@@ -24,35 +25,103 @@ logger = logging.getLogger("agency.models")
 
 DEFAULT_POOLS: dict[str, list[dict[str, Any]]] = {
     "leadops": [
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/qwen/qwen3-coder:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/openrouter/healer-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "marketing": [
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/qwen/qwen3-coder:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "sales": [
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/stepfun/step-3.5-flash:free", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/stepfun/step-3.5-flash:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "dev": [
-        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/qwen/qwen3-coder:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/openrouter/healer-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "analytics": [
-        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/qwen/qwen3-coder:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "creative": [
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/qwen/qwen3-coder:free", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/qwen/qwen3-coder:free",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
     "abm": [
-        {"name": "openrouter/openrouter/hunter-alpha", "provider": "openrouter", "tier": "free"},
-        {"name": "openrouter/openrouter/healer-alpha", "provider": "openrouter", "tier": "free"},
+        {
+            "name": "openrouter/openrouter/hunter-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
+        {
+            "name": "openrouter/openrouter/healer-alpha",
+            "provider": "openrouter",
+            "tier": "free",
+        },
     ],
 }
 
@@ -83,6 +152,7 @@ class ModelResponse:
     latency_ms: float = 0
     success: bool = True
     error: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -110,7 +180,8 @@ class ModelRouter:
         """Get ordered model list for a studio, filtering unhealthy ones."""
         pool = self.pools.get(studio, self.pools.get("leadops", []))
         return [
-            m for m in pool
+            m
+            for m in pool
             if self.health.get(m["name"], ModelHealth(m["name"])).is_healthy
         ]
 
@@ -121,9 +192,11 @@ class ModelRouter:
         system: str = "",
         task_id: int | None = None,
         max_retries: int = 2,
+        tools: list[dict] | None = None,
+        messages: list[dict] | None = None,
     ) -> ModelResponse:
         """Call the best available model with automatic fallback.
-        
+
         On 429: immediately skip to next model (don't waste time retrying).
         On other errors: retry up to max_retries then move on.
         Total timeout: 60s for the entire model selection process.
@@ -144,7 +217,7 @@ class ModelRouter:
 
             for attempt in range(max_retries):
                 try:
-                    response = self._call_provider(model_cfg, prompt, system)
+                    response = self._call_provider(model_cfg, prompt, system, tools, messages)
                     # Log success
                     state = get_state()
                     state.log_model_usage(
@@ -165,12 +238,16 @@ class ModelRouter:
                             "Model %s rate limited (429) → skipping to next model",
                             model_cfg["name"],
                         )
-                        self._update_health(model_cfg["name"], False, "429 rate limited")
+                        self._update_health(
+                            model_cfg["name"], False, "429 rate limited"
+                        )
                         break  # Break inner loop → move to next model
                     last_error = str(e)
                     logger.warning(
                         "Model %s attempt %d failed: %s",
-                        model_cfg["name"], attempt + 1, last_error,
+                        model_cfg["name"],
+                        attempt + 1,
+                        last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
                     time.sleep(min(1 * (attempt + 1), 3))  # Max 3s backoff
@@ -178,7 +255,9 @@ class ModelRouter:
                     last_error = str(e)
                     logger.warning(
                         "Model %s attempt %d failed: %s",
-                        model_cfg["name"], attempt + 1, last_error,
+                        model_cfg["name"],
+                        attempt + 1,
+                        last_error,
                     )
                     self._update_health(model_cfg["name"], False, last_error)
                     if "rate limited" in last_error.lower():
@@ -187,10 +266,18 @@ class ModelRouter:
 
         # All models failed
         state = get_state()
-        state.log_event("model_failure", f"All models failed for {studio}: {last_error}", source="model_router", level="error")
+        state.log_event(
+            "model_failure",
+            f"All models failed for {studio}: {last_error}",
+            source="model_router",
+            level="error",
+        )
         return ModelResponse(
-            content="", model="none", provider="none",
-            success=False, error=f"All models failed: {last_error}",
+            content="",
+            model="none",
+            provider="none",
+            success=False,
+            error=f"All models failed: {last_error}",
         )
 
     def call_model_sync(
@@ -199,30 +286,32 @@ class ModelRouter:
         studio: str = "dev",
         system: str = "",
         task_id: int | None = None,
+        tools: list[dict] | None = None,
+        messages: list[dict] | None = None,
     ) -> ModelResponse:
         """Synchronous version of call_model."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # Already in async context
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
                         asyncio.run,
-                        self.call_model(prompt, studio, system, task_id),
+                        self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages),
                     )
                     return future.result()
             return loop.run_until_complete(
-                self.call_model(prompt, studio, system, task_id)
+                self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages)
             )
         except RuntimeError:
-            return asyncio.run(
-                self.call_model(prompt, studio, system, task_id)
-            )
+            return asyncio.run(self.call_model(prompt, studio, system, task_id, tools=tools, messages=messages))
 
     def _call_provider(
-        self, model_cfg: dict, prompt: str, system: str
+        self, model_cfg: dict, prompt: str, system: str, tools: list[dict] | None = None, messages: list[dict] | None = None
     ) -> ModelResponse:
         provider = model_cfg["provider"]
         model_name = model_cfg["name"]
@@ -233,7 +322,9 @@ class ModelRouter:
             key_name = PROVIDER_KEY_MAP.get(provider, provider)
             api_key = self._cfg.api_keys.get(key_name, "")
             if not api_key:
-                raise RuntimeError(f"No API key configured for provider '{provider}' (set it in .env)")
+                raise RuntimeError(
+                    f"No API key configured for provider '{provider}' (set it in .env)"
+                )
 
         if provider == "anthropic":
             return self._call_anthropic(model_name, prompt, system, start)
@@ -242,38 +333,55 @@ class ModelRouter:
         elif provider == "openclaw":
             return self._call_openclaw(model_name, prompt, system, start)
         else:
-            return self._call_openai_compatible(model_name, provider, prompt, system, start)
+            return self._call_openai_compatible(
+                model_name, provider, prompt, system, start, tools, messages
+            )
 
     def _call_openai_compatible(
-        self, model: str, provider: str, prompt: str, system: str, start: float
+        self, model: str, provider: str, prompt: str, system: str, start: float, tools: list[dict] | None = None, raw_messages: list[dict] | None = None
     ) -> ModelResponse:
         endpoint = PROVIDER_ENDPOINTS.get(provider, PROVIDER_ENDPOINTS["openrouter"])
         key_name = PROVIDER_KEY_MAP.get(provider, provider)
         api_key = self._cfg.api_keys.get(key_name, "")
 
         # Strip provider prefix from model name (e.g. "openrouter/openai/gpt-4o" → "openai/gpt-4o")
-        api_model = model.removeprefix(f"{provider}/") if model.startswith(f"{provider}/") else model
+        api_model = (
+            model.removeprefix(f"{provider}/")
+            if model.startswith(f"{provider}/")
+            else model
+        )
 
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
         if provider == "openrouter":
             headers["HTTP-Referer"] = "https://agency-os.local"
 
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        if raw_messages:
+            messages = raw_messages
+        else:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+
+        payload = {"model": api_model, "messages": messages}
+        if tools:
+            payload["tools"] = tools
 
         resp = self._client.post(
             endpoint,
             headers=headers,
-            json={"model": api_model, "messages": messages},
+            json=payload,
         )
         resp.raise_for_status()
         data = resp.json()
 
         latency = (time.monotonic() - start) * 1000
         choice = data.get("choices", [{}])[0]
-        content = choice.get("message", {}).get("content", "")
+        content = choice.get("message", {}).get("content") or ""
+        tool_calls = choice.get("message", {}).get("tool_calls", [])
         usage = data.get("usage", {})
 
         return ModelResponse(
@@ -283,6 +391,7 @@ class ModelRouter:
             tokens_in=usage.get("prompt_tokens", 0),
             tokens_out=usage.get("completion_tokens", 0),
             latency_ms=latency,
+            tool_calls=tool_calls,
         )
 
     def _call_anthropic(
@@ -356,32 +465,66 @@ class ModelRouter:
         try:
             import os
             import shutil
+
             env = os.environ.copy()
-            
+
             # Retrieve the token from environment
             token = os.environ.get("OPENCLAW_API_KEY", "")
             if token:
                 env["OPENCLAW_AUTH_TOKEN"] = token
 
-            # Safely resolve openclaw binary path (since daemon PATH may lack ~/.npm-global/bin)
-            openclaw_bin = os.environ.get("OPENCLAW_BIN") or shutil.which("openclaw") or "/home/nelson/.npm-global/bin/openclaw"
+            # Safely resolve openclaw binary path
+            openclaw_bin = os.environ.get("OPENCLAW_BIN") or shutil.which("openclaw")
+            if not openclaw_bin:
+                # Last resort fallback if not in PATH
+                user_home = os.path.expanduser("~")
+                potential_paths = [
+                    f"{user_home}/.npm-global/bin/openclaw",
+                    "/usr/local/bin/openclaw",
+                    "/usr/bin/openclaw",
+                ]
+                for p in potential_paths:
+                    if os.path.exists(p):
+                        openclaw_bin = p
+                        break
+
+            if not openclaw_bin:
+                raise RuntimeError(
+                    "openclaw binary not found in PATH or standard locations. Please set OPENCLAW_BIN in .env"
+                )
 
             result = subprocess.run(
-                [openclaw_bin, "agent", "--agent", "main", "--json", "--message", full_prompt],
-                capture_output=True, text=True, timeout=120, env=env
+                [
+                    openclaw_bin,
+                    "agent",
+                    "--agent",
+                    "main",
+                    "--json",
+                    "--message",
+                    full_prompt,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env,
             )
             latency = (time.monotonic() - start) * 1000
 
             if result.returncode != 0:
                 raise RuntimeError(f"openclaw agent failed: {result.stderr[:200]}")
 
-            if "API rate limit reached" in result.stdout or "Rate limit" in result.stdout:
+            if (
+                "API rate limit reached" in result.stdout
+                or "Rate limit" in result.stdout
+            ):
                 raise RuntimeError("openclaw agent rate limited (force fallback)")
 
             # Try JSON first, fallback to raw text
             try:
                 data = json_lib.loads(result.stdout)
-                content = data.get("response", data.get("content", data.get("message", "")))
+                content = data.get(
+                    "response", data.get("content", data.get("message", ""))
+                )
             except json_lib.JSONDecodeError:
                 content = result.stdout.strip()
 
@@ -405,19 +548,27 @@ class ModelRouter:
         # Mark unhealthy if >50% failure rate and at least 3 calls
         if h.total_calls >= 3 and h.failures / h.total_calls > 0.5:
             h.is_healthy = False
-            logger.warning("Model %s marked unhealthy (%.0f%% failure)", model, h.failures / h.total_calls * 100)
+            logger.warning(
+                "Model %s marked unhealthy (%.0f%% failure)",
+                model,
+                h.failures / h.total_calls * 100,
+            )
 
     def get_health_report(self) -> list[dict]:
         report = []
         for name, h in self.health.items():
-            report.append({
-                "model": name,
-                "calls": h.total_calls,
-                "failures": h.failures,
-                "healthy": h.is_healthy,
-                "failure_rate": f"{h.failures / h.total_calls * 100:.0f}%" if h.total_calls > 0 else "0%",
-                "last_error": h.last_error[:100] if h.last_error else "",
-            })
+            report.append(
+                {
+                    "model": name,
+                    "calls": h.total_calls,
+                    "failures": h.failures,
+                    "healthy": h.is_healthy,
+                    "failure_rate": f"{h.failures / h.total_calls * 100:.0f}%"
+                    if h.total_calls > 0
+                    else "0%",
+                    "last_error": h.last_error[:100] if h.last_error else "",
+                }
+            )
         return report
 
     def close(self) -> None:

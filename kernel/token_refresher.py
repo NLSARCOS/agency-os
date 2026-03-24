@@ -8,17 +8,19 @@ Supports openai-codex (ChatGPT) and any OAuth provider in auth-profiles.json.
 Called from the heartbeat every tick (1 min). Only acts when tokens
 are within 48h of expiry.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from pathlib import Path
 
 logger = logging.getLogger("agency.token_refresher")
 
-AUTH_PROFILES_PATH = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
+AUTH_PROFILES_PATH = (
+    Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
+)
 REFRESH_THRESHOLD_HOURS = 48  # Refresh when < 48h left
 
 
@@ -31,9 +33,7 @@ def _load_profiles() -> dict:
 
 def _save_profiles(data: dict) -> None:
     """Save auth-profiles.json."""
-    AUTH_PROFILES_PATH.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False)
-    )
+    AUTH_PROFILES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _refresh_openai_codex(profile: dict) -> dict | None:
@@ -139,9 +139,7 @@ def check_and_refresh() -> dict:
         remaining_hours = remaining_ms / (1000 * 3600)
 
         if remaining_hours > REFRESH_THRESHOLD_HOURS:
-            logger.debug(
-                "Token %s OK (%.1f hours remaining)", name, remaining_hours
-            )
+            logger.debug("Token %s OK (%.1f hours remaining)", name, remaining_hours)
             result["skipped"] += 1
             continue
 
@@ -184,6 +182,7 @@ def _notify_token_expiring(profile_name: str, hours_remaining: float) -> None:
     try:
         from kernel.notifier import Notifier, NotificationPriority
         from kernel.config import get_config
+
         cfg = get_config()
         _es = cfg.language == "es"
 
@@ -192,8 +191,16 @@ def _notify_token_expiring(profile_name: str, hours_remaining: float) -> None:
             title="⚠️ Token OAuth por expirar" if _es else "⚠️ OAuth Token Expiring",
             message=(
                 f"**{profile_name}** — "
-                + (f"quedan {hours_remaining:.0f} horas.\n" if _es else f"{hours_remaining:.0f} hours remaining.\n")
-                + ("No se pudo renovar automáticamente.\n" if _es else "Auto-refresh failed.\n")
+                + (
+                    f"quedan {hours_remaining:.0f} horas.\n"
+                    if _es
+                    else f"{hours_remaining:.0f} hours remaining.\n"
+                )
+                + (
+                    "No se pudo renovar automáticamente.\n"
+                    if _es
+                    else "Auto-refresh failed.\n"
+                )
                 + ("Ejecuta manualmente:\n" if _es else "Run manually:\n")
                 + "`openclaw models auth add`"
             ),

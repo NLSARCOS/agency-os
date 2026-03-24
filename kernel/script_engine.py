@@ -9,6 +9,7 @@ Dynamic script generation and tool composition:
 - Sandbox execution with timeout + resource limits
 - Dry-run mode for safety
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,6 +30,7 @@ logger = logging.getLogger("agency.script")
 @dataclass
 class ScriptResult:
     """Result of script execution."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:10])
     script_type: str = "python"  # python | bash
     source: str = ""
@@ -48,7 +50,7 @@ SCRIPT_TEMPLATES: dict[str, dict[str, str]] = {
     "scrape_and_extract": {
         "description": "Scrape a URL and extract structured data",
         "type": "python",
-        "template": '''
+        "template": """
 import urllib.request
 import json
 import re
@@ -64,12 +66,12 @@ try:
     print(json.dumps({{"url": url, "content": text[:3000], "length": len(text)}}))
 except Exception as e:
     print(json.dumps({{"error": str(e)}}))
-''',
+""",
     },
     "csv_transform": {
         "description": "Read CSV and transform data",
         "type": "python",
-        "template": '''
+        "template": """
 import csv
 import json
 import sys
@@ -84,12 +86,12 @@ with open(input_file, "r") as f:
         results.append({{k: v for k, v in row.items()}})
 
 print(json.dumps({{"rows": len(results), "fields": list(results[0].keys()) if results else [], "sample": results[:3]}}))
-''',
+""",
     },
     "file_search": {
         "description": "Search for files matching a pattern",
         "type": "python",
-        "template": '''
+        "template": """
 import os
 import json
 
@@ -105,12 +107,12 @@ for dirpath, dirs, files in os.walk(root):
             results.append({{"path": path, "size": os.path.getsize(path)}})
 
 print(json.dumps({{"found": len(results), "files": results[:20]}}))
-''',
+""",
     },
     "api_call": {
         "description": "Make an API call and process response",
         "type": "python",
-        "template": '''
+        "template": """
 import urllib.request
 import json
 
@@ -128,12 +130,12 @@ try:
     print(json.dumps({{"status": resp.status, "data": data}}))
 except Exception as e:
     print(json.dumps({{"error": str(e)}}))
-''',
+""",
     },
     "git_report": {
         "description": "Generate git activity report",
         "type": "bash",
-        "template": '''
+        "template": """
 #!/bin/bash
 echo "=== Git Report ==="
 echo "Branch: $(git branch --show-current)"
@@ -145,12 +147,12 @@ git diff --stat
 echo ""
 echo "Contributors:"
 git shortlog -sn --no-merges | head -5
-''',
+""",
     },
     "system_info": {
         "description": "Collect system information",
         "type": "bash",
-        "template": '''
+        "template": """
 #!/bin/bash
 echo "=== System Info ==="
 echo "OS: $(uname -s) $(uname -r)"
@@ -160,7 +162,7 @@ echo "Disk: $(df -h / | tail -1 | awk '{print $4}') free"
 echo "Python: $(python3 --version 2>&1)"
 echo "Node: $(node --version 2>&1 || echo 'not installed')"
 echo "Uptime: $(uptime -p 2>/dev/null || uptime)"
-''',
+""",
     },
 }
 
@@ -232,7 +234,9 @@ class ScriptEngine:
 
         if dry_run:
             result.success = True
-            result.output = f"[DRY RUN] Would execute {script_type} script ({len(source)} chars)"
+            result.output = (
+                f"[DRY RUN] Would execute {script_type} script ({len(source)} chars)"
+            )
             self._history.append(result)
             return result
 
@@ -253,7 +257,7 @@ class ScriptEngine:
         self._history.append(result)
 
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
         return result
 
@@ -276,7 +280,9 @@ class ScriptEngine:
                 variables = step.get("variables", {})
                 variables["_previous_output"] = previous_output
                 result = self.from_template(
-                    step["template"], variables, dry_run=dry_run,
+                    step["template"],
+                    variables,
+                    dry_run=dry_run,
                 )
             else:
                 source = step.get("source", "")
@@ -322,7 +328,11 @@ class ScriptEngine:
     # ── Execution Sandboxes ──────────────────────────────────
 
     def _run_python(
-        self, source: str, timeout: float, cwd: str, result: ScriptResult,
+        self,
+        source: str,
+        timeout: float,
+        cwd: str,
+        result: ScriptResult,
     ) -> ScriptResult:
         """Execute Python script in subprocess."""
         with tempfile.NamedTemporaryFile(
@@ -335,14 +345,18 @@ class ScriptEngine:
         try:
             proc = subprocess.run(
                 ["python3", script_path],
-                capture_output=True, text=True,
-                timeout=timeout, cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
                 env={
                     **os.environ,
                     "PYTHONDONTWRITEBYTECODE": "1",
                 },
             )
-            result.output = proc.stdout[-5000:] if len(proc.stdout) > 5000 else proc.stdout
+            result.output = (
+                proc.stdout[-5000:] if len(proc.stdout) > 5000 else proc.stdout
+            )
             result.error = proc.stderr[-2000:] if proc.stderr else ""
             result.exit_code = proc.returncode
             result.success = proc.returncode == 0
@@ -354,7 +368,11 @@ class ScriptEngine:
         return result
 
     def _run_bash(
-        self, source: str, timeout: float, cwd: str, result: ScriptResult,
+        self,
+        source: str,
+        timeout: float,
+        cwd: str,
+        result: ScriptResult,
     ) -> ScriptResult:
         """Execute Bash script in subprocess."""
         with tempfile.NamedTemporaryFile(
@@ -367,10 +385,14 @@ class ScriptEngine:
         try:
             proc = subprocess.run(
                 ["bash", script_path],
-                capture_output=True, text=True,
-                timeout=timeout, cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
             )
-            result.output = proc.stdout[-5000:] if len(proc.stdout) > 5000 else proc.stdout
+            result.output = (
+                proc.stdout[-5000:] if len(proc.stdout) > 5000 else proc.stdout
+            )
             result.error = proc.stderr[-2000:] if proc.stderr else ""
             result.exit_code = proc.returncode
             result.success = proc.returncode == 0
@@ -386,11 +408,18 @@ class ScriptEngine:
     def _safety_check(self, source: str, script_type: str) -> bool:
         """Check script for dangerous operations."""
         dangerous_patterns = [
-            "rm -rf /", "mkfs.", "dd if=", ":(){ ", "fork bomb",
-            "shutil.rmtree('/'", "os.remove('/'",
+            "rm -rf /",
+            "mkfs.",
+            "dd if=",
+            ":(){ ",
+            "fork bomb",
+            "shutil.rmtree('/'",
+            "os.remove('/'",
             "import subprocess; subprocess.run(['rm'",
-            "eval(input(", "exec(input(",
-            "curl.*|.*bash", "wget.*|.*sh",
+            "eval(input(",
+            "exec(input(",
+            "curl.*|.*bash",
+            "wget.*|.*sh",
         ]
         source_lower = source.lower()
         for pattern in dangerous_patterns:

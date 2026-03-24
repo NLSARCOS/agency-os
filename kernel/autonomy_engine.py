@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Autonomy Engine
+Agency OS v5.0 — Autonomy Engine
 
 Proactive self-operating system that:
 - Discovers pending work from pipelines, KPIs, and events
@@ -11,12 +11,10 @@ Proactive self-operating system that:
 
 This is the brain that makes Agency OS truly autonomous.
 """
+
 from __future__ import annotations
 
-import json
 import logging
-import random
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -32,6 +30,7 @@ logger = logging.getLogger("agency.autonomy")
 @dataclass
 class AutoTask:
     """An auto-discovered task."""
+
     id: str = ""
     source: str = ""  # discovery, self_heal, schedule, kpi
     studio: str = ""
@@ -47,6 +46,7 @@ class AutoTask:
 @dataclass
 class LearningEntry:
     """A learning from past execution."""
+
     pattern: str = ""
     outcome: str = ""  # success, failure
     studio: str = ""
@@ -123,8 +123,15 @@ class AutonomyEngine:
                 """INSERT OR REPLACE INTO autonomy_learnings
                    (key, pattern, outcome, studio, operation, confidence, count, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-                (key, entry.pattern, entry.outcome, entry.studio,
-                 entry.operation, entry.confidence, entry.count),
+                (
+                    key,
+                    entry.pattern,
+                    entry.outcome,
+                    entry.studio,
+                    entry.operation,
+                    entry.confidence,
+                    entry.count,
+                ),
             )
             self.state._conn.commit()
         except Exception as e:
@@ -162,15 +169,17 @@ class AutonomyEngine:
                 updated = r["updated_at"] or ""
                 if updated:
                     # Check if stale (no update in significant time)
-                    tasks.append(AutoTask(
-                        id=f"stale_mission_{r['id']}",
-                        source="discovery",
-                        studio="",
-                        task=f"Resume stale mission: {r['name']}",
-                        priority=7.0,
-                        reason=f"Mission '{r['name']}' has been {r['status']} since {updated}",
-                        metadata={"mission_id": r["id"]},
-                    ))
+                    tasks.append(
+                        AutoTask(
+                            id=f"stale_mission_{r['id']}",
+                            source="discovery",
+                            studio="",
+                            task=f"Resume stale mission: {r['name']}",
+                            priority=7.0,
+                            reason=f"Mission '{r['name']}' has been {r['status']} since {updated}",
+                            metadata={"mission_id": r["id"]},
+                        )
+                    )
         except Exception as e:
             logger.debug("Error discovering stale missions: %s", e)
         return tasks
@@ -186,15 +195,17 @@ class AutonomyEngine:
             ).fetchall()
 
             for r in rows:
-                tasks.append(AutoTask(
-                    id=f"retry_{r['id']}",
-                    source="self_heal",
-                    studio=r["studio"],
-                    task=f"Retry failed task: {r['description'][:80]}",
-                    priority=8.0,
-                    reason=f"Task failed in {r['studio']} studio",
-                    metadata={"task_id": r["id"], "original_studio": r["studio"]},
-                ))
+                tasks.append(
+                    AutoTask(
+                        id=f"retry_{r['id']}",
+                        source="self_heal",
+                        studio=r["studio"],
+                        task=f"Retry failed task: {r['description'][:80]}",
+                        priority=8.0,
+                        reason=f"Task failed in {r['studio']} studio",
+                        metadata={"task_id": r["id"], "original_studio": r["studio"]},
+                    )
+                )
         except Exception as e:
             logger.debug("Error discovering failed tasks: %s", e)
         return tasks
@@ -208,21 +219,26 @@ class AutonomyEngine:
             studios_failing: dict[str, int] = {}
 
             for kpi in kpis:
-                if kpi.get("metric_name") == "pipeline_success" and kpi.get("metric_value", 1) < 1:
+                if (
+                    kpi.get("metric_name") == "pipeline_success"
+                    and kpi.get("metric_value", 1) < 1
+                ):
                     studio = kpi.get("studio", "")
                     studios_failing[studio] = studios_failing.get(studio, 0) + 1
 
             for studio, count in studios_failing.items():
                 if count >= 2:
-                    tasks.append(AutoTask(
-                        id=f"kpi_drop_{studio}",
-                        source="kpi",
-                        studio=studio,
-                        task=f"Investigate {studio} pipeline failures ({count} recent failures)",
-                        priority=9.0,
-                        reason=f"{studio} has {count} recent pipeline failures",
-                        metadata={"failure_count": count},
-                    ))
+                    tasks.append(
+                        AutoTask(
+                            id=f"kpi_drop_{studio}",
+                            source="kpi",
+                            studio=studio,
+                            task=f"Investigate {studio} pipeline failures ({count} recent failures)",
+                            priority=9.0,
+                            reason=f"{studio} has {count} recent pipeline failures",
+                            metadata={"failure_count": count},
+                        )
+                    )
         except Exception as e:
             logger.debug("Error discovering KPI drops: %s", e)
         return tasks
@@ -232,7 +248,15 @@ class AutonomyEngine:
         tasks = []
         try:
             # Check which studios have no recent activity
-            studios = ["dev", "marketing", "sales", "leadops", "abm", "analytics", "creative"]
+            studios = [
+                "dev",
+                "marketing",
+                "sales",
+                "leadops",
+                "abm",
+                "analytics",
+                "creative",
+            ]
             active_studios = set()
 
             rows = self.state._conn.execute(
@@ -244,14 +268,16 @@ class AutonomyEngine:
 
             idle = set(studios) - active_studios
             for studio in idle:
-                tasks.append(AutoTask(
-                    id=f"idle_{studio}",
-                    source="discovery",
-                    studio=studio,
-                    task=f"Activate {studio} studio — suggest initial tasks",
-                    priority=3.0,
-                    reason=f"{studio} studio has no recent activity",
-                ))
+                tasks.append(
+                    AutoTask(
+                        id=f"idle_{studio}",
+                        source="discovery",
+                        studio=studio,
+                        task=f"Activate {studio} studio — suggest initial tasks",
+                        priority=3.0,
+                        reason=f"{studio} studio has no recent activity",
+                    )
+                )
         except Exception as e:
             logger.debug("Error discovering idle studios: %s", e)
         return tasks
@@ -265,17 +291,21 @@ class AutonomyEngine:
                 limit=5,
             )
             for k in knowledge:
-                if any(word in k.content.lower() for word in
-                       ["should", "need", "todo", "improve", "fix", "upgrade"]):
-                    tasks.append(AutoTask(
-                        id=f"knowledge_{k.id}",
-                        source="discovery",
-                        studio="",
-                        task=f"Follow up on knowledge: {k.topic}",
-                        priority=4.0,
-                        reason=f"Knowledge entry suggests action: {k.content[:100]}",
-                        metadata={"knowledge_id": k.id},
-                    ))
+                if any(
+                    word in k.content.lower()
+                    for word in ["should", "need", "todo", "improve", "fix", "upgrade"]
+                ):
+                    tasks.append(
+                        AutoTask(
+                            id=f"knowledge_{k.id}",
+                            source="discovery",
+                            studio="",
+                            task=f"Follow up on knowledge: {k.topic}",
+                            priority=4.0,
+                            reason=f"Knowledge entry suggests action: {k.content[:100]}",
+                            metadata={"knowledge_id": k.id},
+                        )
+                    )
         except Exception as e:
             logger.debug("Error discovering from knowledge: %s", e)
         return tasks
@@ -286,14 +316,17 @@ class AutonomyEngine:
         """Attempt to heal/retry a failed operation."""
         logger.info("Self-healing: %s", task.task[:80])
 
-        self.bus.publish_sync(Event(
-            type="autonomy.heal_start",
-            payload={"task_id": task.id, "studio": task.studio},
-        ))
+        self.bus.publish_sync(
+            Event(
+                type="autonomy.heal_start",
+                payload={"task_id": task.id, "studio": task.studio},
+            )
+        )
 
         try:
             # Load the studio and retry
             from studios.base_studio import load_all_studios
+
             studios = load_all_studios()
 
             studio = studios.get(task.studio)
@@ -412,7 +445,8 @@ class AutonomyEngine:
             # Boost priority if knowledge suggests urgency
             if task.source == "discovery":
                 knowledge = self.memory.query_knowledge(
-                    task.task[:50], limit=1,
+                    task.task[:50],
+                    limit=1,
                 )
                 if knowledge and knowledge[0].access_count > 3:
                     task.priority = min(10.0, task.priority + 0.5)
@@ -432,36 +466,42 @@ class AutonomyEngine:
 
         # Daily: Analytics report
         if hour == 8:
-            tasks.append(AutoTask(
-                id="daily_analytics",
-                source="schedule",
-                studio="analytics",
-                task="Generate daily analytics report",
-                priority=6.0,
-                reason="Scheduled daily report",
-            ))
+            tasks.append(
+                AutoTask(
+                    id="daily_analytics",
+                    source="schedule",
+                    studio="analytics",
+                    task="Generate daily analytics report",
+                    priority=6.0,
+                    reason="Scheduled daily report",
+                )
+            )
 
         # Monday: Weekly pipeline review
         if day == 0 and hour == 9:
-            tasks.append(AutoTask(
-                id="weekly_review",
-                source="schedule",
-                studio="analytics",
-                task="Weekly pipeline performance review",
-                priority=7.0,
-                reason="Scheduled weekly review",
-            ))
+            tasks.append(
+                AutoTask(
+                    id="weekly_review",
+                    source="schedule",
+                    studio="analytics",
+                    task="Weekly pipeline performance review",
+                    priority=7.0,
+                    reason="Scheduled weekly review",
+                )
+            )
 
         # Daily: Check for stale leads
         if hour == 10:
-            tasks.append(AutoTask(
-                id="daily_leadops",
-                source="schedule",
-                studio="leadops",
-                task="Check lead pipeline status and score new leads",
-                priority=5.0,
-                reason="Scheduled daily lead check",
-            ))
+            tasks.append(
+                AutoTask(
+                    id="daily_leadops",
+                    source="schedule",
+                    studio="leadops",
+                    task="Check lead pipeline status and score new leads",
+                    priority=5.0,
+                    reason="Scheduled daily lead check",
+                )
+            )
 
         return tasks
 
@@ -499,36 +539,42 @@ class AutonomyEngine:
 
         for task in prioritized[:max_tasks]:
             if dry_run:
-                results.append({
-                    "id": task.id,
-                    "source": task.source,
-                    "studio": task.studio,
-                    "task": task.task[:100],
-                    "priority": task.priority,
-                    "reason": task.reason[:100],
-                    "action": "would_execute",
-                })
+                results.append(
+                    {
+                        "id": task.id,
+                        "source": task.source,
+                        "studio": task.studio,
+                        "task": task.task[:100],
+                        "priority": task.priority,
+                        "reason": task.reason[:100],
+                        "action": "would_execute",
+                    }
+                )
             else:
                 result = self.self_heal(task)
-                results.append({
-                    "id": task.id,
-                    "source": task.source,
-                    "studio": task.studio,
-                    "task": task.task[:100],
-                    "priority": task.priority,
-                    "success": result.get("success", False),
-                    "output": str(result.get("output", ""))[:200],
-                })
+                results.append(
+                    {
+                        "id": task.id,
+                        "source": task.source,
+                        "studio": task.studio,
+                        "task": task.task[:100],
+                        "priority": task.priority,
+                        "success": result.get("success", False),
+                        "output": str(result.get("output", ""))[:200],
+                    }
+                )
                 executed += 1
 
-        self.bus.publish_sync(Event(
-            type="autonomy.cycle_complete",
-            payload={
-                "tasks_found": len(all_tasks),
-                "tasks_executed": executed,
-                "dry_run": dry_run,
-            },
-        ))
+        self.bus.publish_sync(
+            Event(
+                type="autonomy.cycle_complete",
+                payload={
+                    "tasks_found": len(all_tasks),
+                    "tasks_executed": executed,
+                    "dry_run": dry_run,
+                },
+            )
+        )
 
         return {
             "tasks_found": len(all_tasks),

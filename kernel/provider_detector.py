@@ -10,6 +10,7 @@ Auto-detects local AI providers:
 
 Used by setup.sh and by runtime to auto-configure model routing.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,6 +28,7 @@ logger = logging.getLogger("agency.providers")
 @dataclass
 class ProviderStatus:
     """Status of a detected provider."""
+
     name: str
     installed: bool = False
     running: bool = False
@@ -68,7 +70,9 @@ class ProviderDetector:
                 try:
                     ver = subprocess.run(
                         ["openclaw", "--version"],
-                        capture_output=True, text=True, timeout=5,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     status.version = ver.stdout.strip().split("\n")[0]
                 except Exception:
@@ -113,7 +117,9 @@ class ProviderDetector:
                 try:
                     ver = subprocess.run(
                         ["ollama", "--version"],
-                        capture_output=True, text=True, timeout=5,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     status.version = ver.stdout.strip()
                 except Exception:
@@ -130,24 +136,24 @@ class ProviderDetector:
             if status.running:
                 try:
                     import httpx
+
                     resp = httpx.get(f"{ollama_url}/api/tags", timeout=5)
                     if resp.status_code == 200:
                         data = resp.json()
                         status.models = [
-                            m.get("name", "unknown")
-                            for m in data.get("models", [])
+                            m.get("name", "unknown") for m in data.get("models", [])
                         ]
                 except Exception:
                     # Try without httpx
                     try:
                         import urllib.request
+
                         req = urllib.request.urlopen(
                             f"{ollama_url}/api/tags", timeout=5
                         )
                         data = json.loads(req.read())
                         status.models = [
-                            m.get("name", "unknown")
-                            for m in data.get("models", [])
+                            m.get("name", "unknown") for m in data.get("models", [])
                         ]
                     except Exception:
                         pass
@@ -185,7 +191,9 @@ class ProviderDetector:
                 try:
                     ver = subprocess.run(
                         ["lms", "version"],
-                        capture_output=True, text=True, timeout=5,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     status.version = ver.stdout.strip()
                 except Exception:
@@ -202,23 +210,21 @@ class ProviderDetector:
             if status.running:
                 try:
                     import httpx
+
                     resp = httpx.get(f"{lms_url}/v1/models", timeout=5)
                     if resp.status_code == 200:
                         data = resp.json()
                         status.models = [
-                            m.get("id", "unknown")
-                            for m in data.get("data", [])
+                            m.get("id", "unknown") for m in data.get("data", [])
                         ]
                 except Exception:
                     try:
                         import urllib.request
-                        req = urllib.request.urlopen(
-                            f"{lms_url}/v1/models", timeout=5
-                        )
+
+                        req = urllib.request.urlopen(f"{lms_url}/v1/models", timeout=5)
                         data = json.loads(req.read())
                         status.models = [
-                            m.get("id", "unknown")
-                            for m in data.get("data", [])
+                            m.get("id", "unknown") for m in data.get("data", [])
                         ]
                     except Exception:
                         pass
@@ -264,11 +270,13 @@ class ProviderDetector:
         """Check if an HTTP endpoint is responding."""
         try:
             import httpx
+
             resp = httpx.get(url, timeout=3)
             return resp.status_code < 500
         except Exception:
             try:
                 import urllib.request
+
                 req = urllib.request.urlopen(url, timeout=3)
                 return req.status < 500
             except Exception:
@@ -279,10 +287,16 @@ class ProviderDetector:
         if not self._results:
             self.detect_all()
 
-        local = {k: v for k, v in self._results.items()
-                 if k in ("openclaw", "ollama", "lmstudio")}
-        cloud = {k: v for k, v in self._results.items()
-                 if k not in ("openclaw", "ollama", "lmstudio")}
+        local = {
+            k: v
+            for k, v in self._results.items()
+            if k in ("openclaw", "ollama", "lmstudio")
+        }
+        cloud = {
+            k: v
+            for k, v in self._results.items()
+            if k not in ("openclaw", "ollama", "lmstudio")
+        }
 
         all_models = []
         for p in self._results.values():
@@ -306,12 +320,8 @@ class ProviderDetector:
                 for name, s in cloud.items()
             },
             "total_models": len(all_models),
-            "total_local_running": sum(
-                1 for s in local.values() if s.running
-            ),
-            "total_cloud_configured": sum(
-                1 for s in cloud.values() if s.installed
-            ),
+            "total_local_running": sum(1 for s in local.values() if s.running),
+            "total_cloud_configured": sum(1 for s in cloud.values() if s.installed),
         }
 
     def generate_env_block(self) -> str:
@@ -331,7 +341,7 @@ class ProviderDetector:
         # Ollama
         ol = self._results.get("ollama")
         if ol and ol.installed:
-            lines.append(f"\n# ── Ollama (Local Models) ─────────────")
+            lines.append("\n# ── Ollama (Local Models) ─────────────")
             lines.append(f"OLLAMA_HOST={ol.url}")
             if ol.models:
                 lines.append(f"OLLAMA_DEFAULT_MODEL={ol.models[0]}")
@@ -340,7 +350,7 @@ class ProviderDetector:
         # LM Studio
         lms = self._results.get("lmstudio")
         if lms and lms.installed:
-            lines.append(f"\n# ── LM Studio (Local OpenAI-compatible) ──")
+            lines.append("\n# ── LM Studio (Local OpenAI-compatible) ──")
             lines.append(f"LM_STUDIO_URL={lms.url}")
             if lms.models:
                 lines.append(f"LM_STUDIO_DEFAULT_MODEL={lms.models[0]}")

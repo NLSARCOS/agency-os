@@ -5,6 +5,7 @@ Agency OS — State Manager
 Persistent state via SQLite. Tracks missions, tasks, KPIs, events.
 No more overwriting markdown files as "state".
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 from kernel.config import get_config
@@ -214,16 +214,18 @@ class StateManager:
     def __new__(cls) -> StateManager:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            cls._instance._initialized = False  # type: ignore
         return cls._instance
 
     def __init__(self) -> None:
-        if self._initialized:
+        if self._initialized:  # type: ignore
             return
         self._initialized = True
         cfg = get_config()
         self._db_path = cfg.db_path
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False, timeout=15.0)
+        self._conn = sqlite3.connect(
+            str(self._db_path), check_same_thread=False, timeout=15.0
+        )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=15000")
@@ -247,8 +249,15 @@ class StateManager:
                 """INSERT INTO missions (name, description, studio, priority,
                    created_at, updated_at, metadata)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (name, description, studio, priority, now, now,
-                 json.dumps(metadata or {})),
+                (
+                    name,
+                    description,
+                    studio,
+                    priority,
+                    now,
+                    now,
+                    json.dumps(metadata or {}),
+                ),
             )
             self._conn.commit()
             return cur.lastrowid  # type: ignore[return-value]
@@ -266,9 +275,7 @@ class StateManager:
         set_clause = ", ".join(f"{k} = ?" for k in ["status", *extras])
         vals = [status.value, *extras.values(), mission_id]
         with self._lock:
-            self._conn.execute(
-                f"UPDATE missions SET {set_clause} WHERE id = ?", vals
-            )
+            self._conn.execute(f"UPDATE missions SET {set_clause} WHERE id = ?", vals)
             self._conn.commit()
 
     def get_missions(
@@ -366,12 +373,23 @@ class StateManager:
             self._conn.execute(
                 """UPDATE tasks SET status = ?, output_data = ?, model_used = ?,
                    duration_seconds = ?, error = ?, completed_at = ? WHERE id = ?""",
-                (status.value, output_data, model_used, duration, error, _now(), task_id),
+                (
+                    status.value,
+                    output_data,
+                    model_used,
+                    duration,
+                    error,
+                    _now(),
+                    task_id,
+                ),
             )
             self._conn.commit()
 
     def get_tasks(
-        self, studio: str | None = None, status: TaskStatus | None = None, limit: int = 50
+        self,
+        studio: str | None = None,
+        status: TaskStatus | None = None,
+        limit: int = 50,
     ) -> list[dict]:
         conditions = []
         params: list[Any] = []
@@ -403,8 +421,14 @@ class StateManager:
                 """INSERT INTO kpis (studio, metric_name, metric_value, unit,
                    recorded_at, metadata)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (studio, metric_name, metric_value, unit, _now(),
-                 json.dumps(metadata or {})),
+                (
+                    studio,
+                    metric_name,
+                    metric_value,
+                    unit,
+                    _now(),
+                    json.dumps(metadata or {}),
+                ),
             )
             self._conn.commit()
 
@@ -440,8 +464,14 @@ class StateManager:
             self._conn.execute(
                 """INSERT INTO events (event_type, source, message, level,
                    timestamp, metadata) VALUES (?, ?, ?, ?, ?, ?)""",
-                (event_type, source, message, level, _now(),
-                 json.dumps(metadata or {})),
+                (
+                    event_type,
+                    source,
+                    message,
+                    level,
+                    _now(),
+                    json.dumps(metadata or {}),
+                ),
             )
             self._conn.commit()
 
@@ -481,8 +511,17 @@ class StateManager:
                 """INSERT INTO model_usage (model_name, studio, task_id, tokens_in,
                    tokens_out, latency_ms, success, error, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (model_name, studio, task_id, tokens_in, tokens_out,
-                 latency_ms, int(success), error, _now()),
+                (
+                    model_name,
+                    studio,
+                    task_id,
+                    tokens_in,
+                    tokens_out,
+                    latency_ms,
+                    int(success),
+                    error,
+                    _now(),
+                ),
             )
             self._conn.commit()
 
@@ -532,8 +571,12 @@ class StateManager:
     # ── Agent Memory Persistence ─────────────────────────────
 
     def save_agent_memory(
-        self, agent_id: str, role: str, content: str,
-        mission_id: int | None = None, metadata: dict | None = None,
+        self,
+        agent_id: str,
+        role: str,
+        content: str,
+        mission_id: int | None = None,
+        metadata: dict | None = None,
     ) -> int:
         """Persist an agent memory entry to SQLite."""
         now = datetime.now(timezone.utc).isoformat()
@@ -542,15 +585,19 @@ class StateManager:
                 """INSERT INTO agent_memory
                    (agent_id, role, content, mission_id, timestamp, metadata)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (agent_id, role, content[:5000], mission_id, now,
-                 json.dumps(metadata or {})),
+                (
+                    agent_id,
+                    role,
+                    content[:5000],
+                    mission_id,
+                    now,
+                    json.dumps(metadata or {}),
+                ),
             )
             self._conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid  # type: ignore
 
-    def load_agent_memory(
-        self, agent_id: str, limit: int = 10
-    ) -> list[dict[str, Any]]:
+    def load_agent_memory(self, agent_id: str, limit: int = 10) -> list[dict[str, Any]]:
         """Load recent memory entries for an agent."""
         with self._lock:
             rows = self._conn.execute(
@@ -583,10 +630,19 @@ class StateManager:
                 (name, company, email, phone, pipeline_stage, source, notes, now, now),
             )
             self._conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid  # type: ignore
 
     def update_client(self, client_id: int, **fields: Any) -> None:
-        allowed = {"name", "company", "email", "phone", "pipeline_stage", "source", "notes", "total_revenue"}
+        allowed = {
+            "name",
+            "company",
+            "email",
+            "phone",
+            "pipeline_stage",
+            "source",
+            "notes",
+            "total_revenue",
+        }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return
@@ -635,10 +691,18 @@ class StateManager:
                 """INSERT INTO financial_records
                    (mission_id, client_id, record_type, amount, currency, description, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (mission_id, client_id, record_type, amount, currency, description, _now()),
+                (
+                    mission_id,
+                    client_id,
+                    record_type,
+                    amount,
+                    currency,
+                    description,
+                    _now(),
+                ),
             )
             self._conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid  # type: ignore
 
     def get_financial_summary(self, days: int = 30) -> dict:
         """Get financial summary for the last N days."""

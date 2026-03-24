@@ -12,11 +12,10 @@ The system that makes Agency OS ALIVE:
 
 This runs autonomously and continuously improves the system.
 """
+
 from __future__ import annotations
 
 import logging
-import os
-import re
 import subprocess
 import sys
 import time
@@ -35,6 +34,7 @@ logger = logging.getLogger("agency.evolution")
 @dataclass
 class EvolutionProposal:
     """A self-improvement proposal."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:8])
     type: str = ""  # skill | agent | module | fix | optimization
     title: str = ""
@@ -52,6 +52,7 @@ class EvolutionProposal:
 @dataclass
 class CodebaseHealth:
     """Analysis of the codebase health."""
+
     total_modules: int = 0
     total_loc: int = 0
     total_studios: int = 0
@@ -79,16 +80,16 @@ class SelfEvolutionEngine:
 
     # Confidence thresholds
     CONFIDENCE_THRESHOLD = 70  # Auto-act on gaps with score >= this
-    HIGH_CONFIDENCE = 90       # Very safe to auto-create
+    HIGH_CONFIDENCE = 90  # Very safe to auto-create
 
     # Scoring rules
     SCORING_RULES = {
-        "missing_skill_for_module": 90,   # Module exists, matching skill doesn't → safe
-        "missing_agent_for_studio": 80,   # Studio exists without dedicated agent → safe
-        "missing_test_file": 75,          # Module has no test file → safe to create
-        "large_module_split": 50,         # Large file, splitting is risky → defer
-        "new_feature_module": 40,         # New functionality → needs human review
-        "code_refactor": 30,              # Structural changes → needs human review
+        "missing_skill_for_module": 90,  # Module exists, matching skill doesn't → safe
+        "missing_agent_for_studio": 80,  # Studio exists without dedicated agent → safe
+        "missing_test_file": 75,  # Module has no test file → safe to create
+        "large_module_split": 50,  # Large file, splitting is risky → defer
+        "new_feature_module": 40,  # New functionality → needs human review
+        "code_refactor": 30,  # Structural changes → needs human review
     }
 
     def __init__(self) -> None:
@@ -107,8 +108,11 @@ class SelfEvolutionEngine:
         # Count kernel modules
         kernel_dir = self._root / "kernel"
         if kernel_dir.exists():
-            modules = [f for f in kernel_dir.iterdir()
-                       if f.suffix == ".py" and not f.name.startswith("__")]
+            modules = [
+                f
+                for f in kernel_dir.iterdir()
+                if f.suffix == ".py" and not f.name.startswith("__")
+            ]
             health.total_modules = len(modules)
 
             # Check for missing tests and docstrings
@@ -121,13 +125,19 @@ class SelfEvolutionEngine:
                     health.missing_tests.append(mod.name)
 
                 # Check top-level docstring
-                if not content.strip().startswith('"""') and not content.strip().startswith("#!/"):
+                if not content.strip().startswith(
+                    '"""'
+                ) and not content.strip().startswith("#!/"):
                     health.missing_docstrings.append(mod.name)
 
         # Count studios
         studios_dir = self._root / "studios"
         if studios_dir.exists():
-            studios = [d for d in studios_dir.iterdir() if d.is_dir() and not d.name.startswith("_")]
+            studios = [
+                d
+                for d in studios_dir.iterdir()
+                if d.is_dir() and not d.name.startswith("_")
+            ]
             health.total_studios = len(studios)
 
         # Count skills
@@ -143,7 +153,9 @@ class SelfEvolutionEngine:
         # Count agents
         agents_dir = self._root / ".agent" / "agents"
         if agents_dir.exists():
-            existing_agents = {f.stem for f in agents_dir.iterdir() if f.suffix == ".md"}
+            existing_agents = {
+                f.stem for f in agents_dir.iterdir() if f.suffix == ".md"
+            }
             health.total_agents = len(existing_agents)
 
             # Detect potential new agents
@@ -269,9 +281,9 @@ description: {description}
 3. **Measure and Iterate** — Track outcomes and continuously improve.
 
 ## When to Use
-- When tasks involve {name.replace('-', ' ')} patterns
+- When tasks involve {name.replace("-", " ")} patterns
 - When optimizing for quality and consistency in this domain
-- When building or improving {name.replace('-', ' ')} capabilities
+- When building or improving {name.replace("-", " ")} capabilities
 
 ## Key Patterns
 
@@ -314,11 +326,17 @@ This skill integrates with the Agency OS kernel modules and can be referenced by
         return agent_file
 
     def _generate_agent_content(
-        self, name: str, role: str, description: str, skills: list[str],
+        self,
+        name: str,
+        role: str,
+        description: str,
+        skills: list[str],
     ) -> str:
         """Generate an agent .md file."""
         title = name.replace("-", " ").title()
-        skills_list = "\n".join(f"  - {s}" for s in skills) if skills else "  - clean-code"
+        skills_list = (
+            "\n".join(f"  - {s}" for s in skills) if skills else "  - clean-code"
+        )
 
         return f"""---
 name: {name}
@@ -413,14 +431,22 @@ skills:
         try:
             result = subprocess.run(
                 [
-                    "gh", "pr", "create",
-                    "--title", commit_msg,
-                    "--body", pr_body,
-                    "--base", "main",
-                    "--head", branch,
+                    "gh",
+                    "pr",
+                    "create",
+                    "--title",
+                    commit_msg,
+                    "--body",
+                    pr_body,
+                    "--base",
+                    "main",
+                    "--head",
+                    branch,
                 ],
-                capture_output=True, text=True,
-                cwd=cwd, timeout=30,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=30,
             )
             if result.returncode == 0:
                 pr_url = result.stdout.strip()
@@ -432,7 +458,8 @@ skills:
                 proposal.status = "pushed"  # Branch pushed, PR failed
         except FileNotFoundError:
             logger.info(
-                "GitHub CLI not found. Branch pushed to %s — create PR manually.", branch,
+                "GitHub CLI not found. Branch pushed to %s — create PR manually.",
+                branch,
             )
             proposal.status = "pushed"
 
@@ -446,34 +473,41 @@ skills:
         self._proposals.append(proposal)
         return proposal.pr_url or f"Branch: {branch}"
 
-    def _run_tests_and_merge(self, branch: str, proposal: EvolutionProposal, cwd: str) -> None:
+    def _run_tests_and_merge(
+        self, branch: str, proposal: EvolutionProposal, cwd: str
+    ) -> None:
         """Run tests on the current branch. If they pass, auto-merge the PR."""
         from kernel.notifier import get_notifier, NotificationPriority
+
         notifier = get_notifier()
-        
+
         logger.info("Running automated verification tests for evolution PR...")
         try:
             # Run the test suite
             result = subprocess.run(
                 [sys.executable, "-m", "pytest", "tests/test_kernel.py", "-q"],
-                capture_output=True, text=True,
-                cwd=cwd, timeout=60,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=60,
             )
-            
+
             if result.returncode == 0:
                 logger.info("Tests passed. Auto-merging PR...")
                 # Merge the PR
                 merge_result = subprocess.run(
                     ["gh", "pr", "merge", branch, "--merge", "--delete-branch"],
-                    capture_output=True, text=True,
-                    cwd=cwd, timeout=30,
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    timeout=30,
                 )
                 if merge_result.returncode == 0:
                     proposal.status = "merged"
-                    notifier.send(
+                    notifier.send(  # type: ignore
                         title="🧬 Evolution Auto-Merged",
                         message=f"I successfully evolved and merged the PR on branch `{branch}`.\n\n"
-                                f"**Changes:** {proposal.title}\n\nAll tests passed with 100% success.",
+                        f"**Changes:** {proposal.title}\n\nAll tests passed with 100% success.",
                         source="self_evolution",
                         priority=NotificationPriority.NORMAL,
                     )
@@ -481,12 +515,12 @@ skills:
                     logger.warning("Auto-merge failed: %s", merge_result.stderr)
             else:
                 logger.warning("Tests failed. PR %s left open for review.", branch)
-                notifier.send(
+                notifier.send(  # type: ignore
                     title="⚠️ Evolution Tests Failed",
                     message=f"I created a PR for `{proposal.title}`, but the tests failed. "
-                            f"I need your human review to fix the issues.\n\n"
-                            f"**Branch:** `{branch}`\n"
-                            f"**Log:**\n```\n{result.stdout[-500:]}\n```",
+                    f"I need your human review to fix the issues.\n\n"
+                    f"**Branch:** `{branch}`\n"
+                    f"**Log:**\n```\n{result.stdout[-500:]}\n```",
                     source="self_evolution",
                     priority=NotificationPriority.HIGH,
                 )
@@ -497,8 +531,12 @@ skills:
         """Run a git command safely."""
         try:
             result = subprocess.run(
-                command, shell=True, capture_output=True, text=True,
-                cwd=cwd, timeout=30,
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=cwd,
+                timeout=30,
             )
             return result.stdout.strip()
         except Exception as e:
@@ -522,7 +560,12 @@ skills:
         return base
 
     def _log_decision(
-        self, gap_type: str, name: str, score: int, action: str, reason: str,
+        self,
+        gap_type: str,
+        name: str,
+        score: int,
+        action: str,
+        reason: str,
     ) -> None:
         """Log every autonomous decision for transparency."""
         decision = {
@@ -536,7 +579,11 @@ skills:
         self._decisions_log.append(decision)
         logger.info(
             "Evolution decision: %s %s (confidence=%d) → %s: %s",
-            gap_type, name, score, action, reason,
+            gap_type,
+            name,
+            score,
+            action,
+            reason,
         )
 
     def evolve(
@@ -553,7 +600,7 @@ skills:
         - Never touches main: always creates branches + PRs
         """
         start = time.monotonic()
-        results = {
+        results = {  # type: ignore
             "skills_created": [],
             "agents_created": [],
             "proposals": [],
@@ -575,7 +622,9 @@ skills:
 
         logger.info(
             "Evolution cycle: %d modules, %d skills, %d agents",
-            health.total_modules, health.total_skills, health.total_agents,
+            health.total_modules,
+            health.total_skills,
+            health.total_agents,
         )
 
         files_to_create = []
@@ -586,78 +635,113 @@ skills:
 
             if score >= self.CONFIDENCE_THRESHOLD:
                 self._log_decision(
-                    "missing_skill_for_module", skill_name, score,
-                    "create", f"Module exists, no matching skill. Score {score} >= {self.CONFIDENCE_THRESHOLD}",
+                    "missing_skill_for_module",
+                    skill_name,
+                    score,
+                    "create",
+                    f"Module exists, no matching skill. Score {score} >= {self.CONFIDENCE_THRESHOLD}",
                 )
 
                 if dry_run:
-                    results["skills_created"].append(f"[DRY] {skill_name}")
+                    results["skills_created"].append(f"[DRY] {skill_name}")  # type: ignore
                 else:
                     desc = f"Principles and patterns for {skill_name.replace('-', ' ')}"
                     path = self.create_skill(skill_name, desc)
                     rel = str(path.relative_to(self._root))
-                    results["skills_created"].append(skill_name)
-                    files_to_create.append({
-                        "path": rel,
-                        "content": path.read_text(encoding="utf-8"),
-                    })
+                    results["skills_created"].append(skill_name)  # type: ignore
+                    files_to_create.append(
+                        {
+                            "path": rel,
+                            "content": path.read_text(encoding="utf-8"),
+                        }
+                    )
             else:
                 self._log_decision(
-                    "missing_skill_for_module", skill_name, score,
-                    "skip", f"Confidence {score} < {self.CONFIDENCE_THRESHOLD}. Needs review.",
+                    "missing_skill_for_module",
+                    skill_name,
+                    score,
+                    "skip",
+                    f"Confidence {score} < {self.CONFIDENCE_THRESHOLD}. Needs review.",
                 )
 
         # 3. DECIDE on agents
         agent_roles = {
-            "qa-specialist": ("Quality assurance and test automation specialist",
-                              ["testing-patterns", "tdd-workflow"]),
-            "devops-engineer": ("CI/CD pipelines and deployment automation",
-                                ["deployment-procedures", "server-management"]),
-            "data-analyst": ("Data analysis and business intelligence",
-                             ["database-design", "performance-profiling"]),
-            "copywriter": ("Marketing copy and persuasive content",
-                           ["seo-fundamentals", "frontend-design"]),
-            "ux-researcher": ("User experience research and usability testing",
-                              ["web-design-guidelines", "frontend-design"]),
-            "growth-hacker": ("Growth experimentation and rapid validation",
-                              ["seo-fundamentals", "testing-patterns"]),
+            "qa-specialist": (
+                "Quality assurance and test automation specialist",
+                ["testing-patterns", "tdd-workflow"],
+            ),
+            "devops-engineer": (
+                "CI/CD pipelines and deployment automation",
+                ["deployment-procedures", "server-management"],
+            ),
+            "data-analyst": (
+                "Data analysis and business intelligence",
+                ["database-design", "performance-profiling"],
+            ),
+            "copywriter": (
+                "Marketing copy and persuasive content",
+                ["seo-fundamentals", "frontend-design"],
+            ),
+            "ux-researcher": (
+                "User experience research and usability testing",
+                ["web-design-guidelines", "frontend-design"],
+            ),
+            "growth-hacker": (
+                "Growth experimentation and rapid validation",
+                ["seo-fundamentals", "testing-patterns"],
+            ),
         }
 
         for agent_name in health.potential_agents:
             score = self._score_gap("missing_agent_for_studio", agent_name)
 
             if score >= self.CONFIDENCE_THRESHOLD:
-                role_info = agent_roles.get(agent_name, (f"{agent_name} specialist", []))
+                role_info = agent_roles.get(
+                    agent_name, (f"{agent_name} specialist", [])
+                )
                 self._log_decision(
-                    "missing_agent_for_studio", agent_name, score,
-                    "create", f"No agent for this domain. Score {score} >= {self.CONFIDENCE_THRESHOLD}",
+                    "missing_agent_for_studio",
+                    agent_name,
+                    score,
+                    "create",
+                    f"No agent for this domain. Score {score} >= {self.CONFIDENCE_THRESHOLD}",
                 )
 
                 if dry_run:
-                    results["agents_created"].append(f"[DRY] {agent_name}")
+                    results["agents_created"].append(f"[DRY] {agent_name}")  # type: ignore
                 else:
                     path = self.create_agent(
-                        agent_name, role_info[0], role_info[0],
+                        agent_name,
+                        role_info[0],
+                        role_info[0],
                         skills=role_info[1] if len(role_info) > 1 else None,
                     )
                     rel = str(path.relative_to(self._root))
-                    results["agents_created"].append(agent_name)
-                    files_to_create.append({
-                        "path": rel,
-                        "content": path.read_text(encoding="utf-8"),
-                    })
+                    results["agents_created"].append(agent_name)  # type: ignore
+                    files_to_create.append(
+                        {
+                            "path": rel,
+                            "content": path.read_text(encoding="utf-8"),
+                        }
+                    )
             else:
                 self._log_decision(
-                    "missing_agent_for_studio", agent_name, score,
-                    "skip", f"Confidence {score} < threshold. Defer.",
+                    "missing_agent_for_studio",
+                    agent_name,
+                    score,
+                    "skip",
+                    f"Confidence {score} < threshold. Defer.",
                 )
 
         # 4. Log decisions for improvements (never auto-act on refactors)
         for improvement in health.improvement_areas:
             score = self._score_gap("large_module_split", improvement)
             self._log_decision(
-                "large_module_split", improvement, score,
-                "defer", "Structural changes need human review.",
+                "large_module_split",
+                improvement,
+                score,
+                "defer",
+                "Structural changes need human review.",
             )
 
         results["decisions"] = list(self._decisions_log[-20:])
@@ -679,34 +763,39 @@ skills:
                     f"**Deferred** (below threshold):\n"
                     + "\n".join(
                         f"- {d['name']} (score={d['confidence']})"
-                        for d in self._decisions_log if d["action"] == "skip"
+                        for d in self._decisions_log
+                        if d["action"] == "skip"
                     )
                 ),
                 files_to_create=files_to_create,
                 branch_name=f"evolution/auto-{uuid4().hex[:6]}",
             )
-            pr_result = self.create_evolution_pr(proposal)
-            results["proposals"].append({
-                "id": proposal.id,
-                "title": proposal.title,
-                "status": proposal.status,
-                "pr_url": proposal.pr_url,
-                "branch": proposal.branch_name,
-                "files": len(files_to_create),
-            })
+            self.create_evolution_pr(proposal)
+            results["proposals"].append(  # type: ignore
+                {
+                    "id": proposal.id,
+                    "title": proposal.title,
+                    "status": proposal.status,
+                    "pr_url": proposal.pr_url,
+                    "branch": proposal.branch_name,
+                    "files": len(files_to_create),
+                }
+            )
 
-        results["duration_ms"] = (time.monotonic() - start) * 1000
+        results["duration_ms"] = (time.monotonic() - start) * 1000  # type: ignore
 
-        self._bus.publish_sync(Event(
-            type="evolution.cycle_complete",
-            source="self_evolution",
-            payload={
-                "skills_created": len(results["skills_created"]),
-                "agents_created": len(results["agents_created"]),
-                "proposals": len(results["proposals"]),
-                "decisions_made": len(results["decisions"]),
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="evolution.cycle_complete",
+                source="self_evolution",
+                payload={
+                    "skills_created": len(results["skills_created"]),
+                    "agents_created": len(results["agents_created"]),
+                    "proposals": len(results["proposals"]),
+                    "decisions_made": len(results["decisions"]),
+                },
+            )
+        )
 
         return results
 
@@ -728,6 +817,7 @@ skills:
         # Call AI for analysis
         try:
             from kernel.openclaw_bridge import get_openclaw
+
             oc = get_openclaw()
             response = oc.ask(
                 prompt=prompt,
@@ -743,6 +833,7 @@ skills:
             if response:
                 # Parse AI response into a proposal
                 from kernel.action_executor import get_action_executor
+
                 ae = get_action_executor()
                 plan = ae.parse(response)
 
@@ -751,8 +842,7 @@ skills:
                     title=f"AI Evolution: {focus or 'general improvement'}",
                     description=response[:500],
                     files_to_create=[
-                        {"path": f.path, "content": f.content}
-                        for f in plan.files
+                        {"path": f.path, "content": f.content} for f in plan.files
                     ],
                 )
 
@@ -767,7 +857,7 @@ skills:
             type="fallback",
             title="Manual review needed",
             description=f"AI analysis unavailable. Health: {health.total_modules} modules, "
-                        f"{len(health.potential_skills)} potential skills.",
+            f"{len(health.potential_skills)} potential skills.",
         )
 
     def _build_analysis_prompt(self, health: CodebaseHealth, focus: str) -> str:
@@ -781,24 +871,24 @@ skills:
             f"- **Agents:** {health.total_agents}\n\n"
             f"### Missing Tests\n"
             + "\n".join(f"- {t}" for t in health.missing_tests[:10])
-            + f"\n\n### Potential New Skills\n"
+            + "\n\n### Potential New Skills\n"
             + "\n".join(f"- {s}" for s in health.potential_skills)
-            + f"\n\n### Potential New Agents\n"
+            + "\n\n### Potential New Agents\n"
             + "\n".join(f"- {a}" for a in health.potential_agents)
-            + f"\n\n### Improvement Areas\n"
+            + "\n\n### Improvement Areas\n"
             + "\n".join(f"- {i}" for i in health.improvement_areas)
             + (f"\n\n### Focus Area\n{focus}" if focus else "")
             + "\n\nPropose 2-3 specific, high-impact improvements. "
-              "For each, provide the COMPLETE file content using "
-              "```language:path/to/file format."
+            "For each, provide the COMPLETE file content using "
+            "```language:path/to/file format."
         )
 
     # ── 6. LEARN FROM EXPERIENCE ───────────────────────────────
 
     # Performance thresholds that trigger self-improvement
-    SLOW_THRESHOLD_MS = 30_000   # Task took > 30s = too slow
-    LOW_QUALITY_THRESHOLD = 60   # Quality score < 60 = needs improvement
-    HIGH_RETRY_THRESHOLD = 2     # > 2 retries = something is wrong
+    SLOW_THRESHOLD_MS = 30_000  # Task took > 30s = too slow
+    LOW_QUALITY_THRESHOLD = 60  # Quality score < 60 = needs improvement
+    HIGH_RETRY_THRESHOLD = 2  # > 2 retries = something is wrong
 
     def learn_from_execution(
         self,
@@ -831,7 +921,9 @@ skills:
             triggers.append(f"slow ({duration_ms:.0f}ms > {self.SLOW_THRESHOLD_MS}ms)")
 
         if quality_score < self.LOW_QUALITY_THRESHOLD:
-            triggers.append(f"low quality ({quality_score:.0f} < {self.LOW_QUALITY_THRESHOLD})")
+            triggers.append(
+                f"low quality ({quality_score:.0f} < {self.LOW_QUALITY_THRESHOLD})"
+            )
 
         if retries > self.HIGH_RETRY_THRESHOLD:
             triggers.append(f"high retries ({retries} > {self.HIGH_RETRY_THRESHOLD})")
@@ -848,7 +940,9 @@ skills:
         trigger_text = "; ".join(triggers)
         logger.info(
             "Learn from execution: %s studio triggered [%s] for task: %s",
-            studio, trigger_text, task[:80],
+            studio,
+            trigger_text,
+            task[:80],
         )
 
         learning = (
@@ -913,20 +1007,25 @@ skills:
 
         # Log the learning decision
         self._log_decision(
-            "experiential_learning", studio, 95,
-            "improve", f"Auto-improved {len(improved)} files due to: {trigger_text}",
+            "experiential_learning",
+            studio,
+            95,
+            "improve",
+            f"Auto-improved {len(improved)} files due to: {trigger_text}",
         )
 
         # Emit event
-        self._bus.publish_sync(Event(
-            type="evolution.learned",
-            source="self_evolution",
-            payload={
-                "studio": studio,
-                "triggers": triggers,
-                "improved": improved,
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="evolution.learned",
+                source="self_evolution",
+                payload={
+                    "studio": studio,
+                    "triggers": triggers,
+                    "improved": improved,
+                },
+            )
+        )
 
         return result
 
@@ -935,11 +1034,17 @@ skills:
     def get_status(self) -> dict[str, Any]:
         return {
             "proposals": len(self._proposals),
-            "applied": sum(1 for p in self._proposals if p.status in ("applied", "merged")),
+            "applied": sum(
+                1 for p in self._proposals if p.status in ("applied", "merged")
+            ),
             "pending_prs": sum(1 for p in self._proposals if p.status == "pr_created"),
             "total_decisions": len(self._decisions_log),
-            "auto_acted": sum(1 for d in self._decisions_log if d["action"] == "create"),
-            "deferred": sum(1 for d in self._decisions_log if d["action"] in ("skip", "defer")),
+            "auto_acted": sum(
+                1 for d in self._decisions_log if d["action"] == "create"
+            ),
+            "deferred": sum(
+                1 for d in self._decisions_log if d["action"] in ("skip", "defer")
+            ),
             "learned": sum(1 for d in self._decisions_log if d["action"] == "improve"),
             "history": [
                 {
@@ -967,4 +1072,3 @@ def get_evolution_engine() -> SelfEvolutionEngine:
     if _engine is None:
         _engine = SelfEvolutionEngine()
     return _engine
-

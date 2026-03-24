@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Agency OS v3.0 — Agent Manager
+Agency OS v5.0.0 — Agent Manager
 
 Manages agent lifecycle: loading from .agent/agents/*.md,
 delegation chains, inter-agent communication, and crew assembly.
 
 Inspired by CrewAI roles/goals/backstories + AutoGen conversations.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,6 +32,7 @@ logger = logging.getLogger("agency.agents")
 @dataclass
 class AgentProfile:
     """Profile loaded from .agent/agents/*.md"""
+
     id: str
     name: str
     description: str = ""
@@ -44,16 +46,22 @@ class AgentProfile:
     active: bool = False
     memory: list[dict] = field(default_factory=list)
     max_memory: int = 50
-    stats: dict[str, int] = field(default_factory=lambda: {
-        "tasks_completed": 0, "tasks_failed": 0,
-        "delegations_sent": 0, "delegations_received": 0,
-        "tools_used": 0, "tokens_total": 0,
-    })
+    stats: dict[str, int] = field(
+        default_factory=lambda: {
+            "tasks_completed": 0,
+            "tasks_failed": 0,
+            "delegations_sent": 0,
+            "delegations_received": 0,
+            "tools_used": 0,
+            "tokens_total": 0,
+        }
+    )
 
 
 @dataclass
 class DelegationRequest:
     """Request from one agent to another."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:12])
     from_agent: str = ""
     to_agent: str = ""
@@ -143,7 +151,7 @@ class AgentManager:
             return None
 
         frontmatter = fm_match.group(1)
-        body = content[fm_match.end():]
+        body = content[fm_match.end() :]
 
         # Parse frontmatter fields
         def _get_field(name: str, default: str = "") -> str:
@@ -209,6 +217,7 @@ class AgentManager:
     def _build_system_prompt(self, agent: AgentProfile) -> str:
         """Build a comprehensive system prompt including agent definition + skills."""
         from kernel.config import get_config
+
         cfg = get_config()
 
         # Language directive
@@ -245,7 +254,9 @@ class AgentManager:
         parts.append("\n# Rules")
         parts.append("- Be concise and actionable")
         parts.append("- Use tools when needed for real operations")
-        parts.append("- Delegate to specialist agents when task is outside your expertise")
+        parts.append(
+            "- Delegate to specialist agents when task is outside your expertise"
+        )
         parts.append("- Report results in structured format")
         if lang_instruction:
             parts.append(f"- {lang_instruction}")
@@ -302,6 +313,7 @@ class AgentManager:
         # Inject learnings from past missions
         try:
             from kernel.mission_learner import get_mission_learner
+
             learner = get_mission_learner()
             summary = learner.get_learning_summary()
             tips = []
@@ -334,9 +346,7 @@ class AgentManager:
             # Timeout check
             elapsed = time.monotonic() - start
             if elapsed > self.TASK_TIMEOUT_SECONDS:
-                logger.warning(
-                    "Agent %s task timed out after %.0fs", agent_id, elapsed
-                )
+                logger.warning("Agent %s task timed out after %.0fs", agent_id, elapsed)
                 break
 
             # ── Call LLM (OpenClaw first, then ModelRouter fallback) ──
@@ -368,40 +378,51 @@ class AgentManager:
             if not tool_calls:
                 logger.info(
                     "Agent %s: final answer at iteration %d",
-                    agent_id, iteration + 1,
+                    agent_id,
+                    iteration + 1,
                 )
                 break
 
             # ── Execute tool calls ──
             logger.info(
                 "Agent %s: %d tool_calls at iteration %d",
-                agent_id, len(tool_calls), iteration + 1,
+                agent_id,
+                len(tool_calls),
+                iteration + 1,
             )
 
             # Add assistant message with tool_calls to conversation
-            messages.append(ChatMessage(
-                role="assistant",
-                content=content or "",
-                tool_calls=tool_calls,
-            ))
+            messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=content or "",
+                    tool_calls=tool_calls,
+                )
+            )
 
             # Execute each tool and add results
-            tool_results = self._execute_tool_calls(agent_id, tool_calls)
+            tool_results = self._execute_tool_calls(agent_id, tool_calls, target_studio)
             for tc, result in zip(tool_calls, tool_results):
                 tool_name = tc.get("function", {}).get("name", "unknown")
-                result_text = result.output if result.success else f"Error: {result.error}"
-                all_tool_results.append({
-                    "tool": tool_name,
-                    "success": result.success,
-                    "output": result_text[:2000],
-                })
+                result_text = (
+                    result.output if result.success else f"Error: {result.error}"
+                )
+                all_tool_results.append(
+                    {
+                        "tool": tool_name,
+                        "success": result.success,
+                        "output": result_text[:2000],
+                    }
+                )
                 # Add tool result message for next LLM iteration
-                messages.append(ChatMessage(
-                    role="tool",
-                    content=result_text[:2000],
-                    tool_call_id=tc.get("id", ""),
-                    name=tool_name,
-                ))
+                messages.append(
+                    ChatMessage(
+                        role="tool",
+                        content=result_text[:2000],
+                        tool_call_id=tc.get("id", ""),
+                        name=tool_name,
+                    )
+                )
 
         # ── Finalize ──
         self._update_memory(agent, task, content)
@@ -411,18 +432,21 @@ class AgentManager:
 
         # Emit event
         bus = self._get_bus()
-        bus.publish_sync(Event(
-            type="agent.task_completed",
-            payload={
-                "agent": agent_id, "task": task[:100],
-                "duration_ms": duration,
-                "model": model_used,
-                "provider": provider_used,
-                "studio": target_studio,
-                "tools_used": len(all_tool_results),
-            },
-            source=agent_id,
-        ))
+        bus.publish_sync(
+            Event(
+                type="agent.task_completed",
+                payload={
+                    "agent": agent_id,
+                    "task": task[:100],
+                    "duration_ms": duration,
+                    "model": model_used,
+                    "provider": provider_used,
+                    "studio": target_studio,
+                    "tools_used": len(all_tool_results),
+                },
+                source=agent_id,
+            )
+        )
 
         return {
             "success": True,
@@ -480,7 +504,8 @@ class AgentManager:
                 else:
                     logger.warning(
                         "OpenClaw returned empty for %s: %s",
-                        agent_id, response.error,
+                        agent_id,
+                        response.error,
                     )
         except Exception as e:
             logger.warning("OpenClaw failed for %s: %s", agent_id, e)
@@ -497,12 +522,25 @@ class AgentManager:
             if not user_prompt:
                 user_prompt = messages[-1].content if messages else ""
 
+            raw_msgs = []
+            for m in messages:
+                msg_dict = {"role": m.role, "content": m.content}
+                if getattr(m, "name", None):
+                    msg_dict["name"] = m.name
+                if getattr(m, "tool_calls", None):
+                    msg_dict["tool_calls"] = m.tool_calls
+                if getattr(m, "tool_call_id", None):
+                    msg_dict["tool_call_id"] = m.tool_call_id
+                raw_msgs.append(msg_dict)
+
             # FIX C1: call_model(prompt, studio, system) — correct order
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         future = pool.submit(
                             asyncio.run,
@@ -510,6 +548,8 @@ class AgentManager:
                                 prompt=user_prompt,
                                 studio=studio,
                                 system=system_prompt,
+                                tools=tools,
+                                messages=raw_msgs,
                             ),
                         )
                         resp = future.result(timeout=self.TASK_TIMEOUT_SECONDS)
@@ -519,6 +559,8 @@ class AgentManager:
                             prompt=user_prompt,
                             studio=studio,
                             system=system_prompt,
+                            tools=tools,
+                            messages=raw_msgs,
                         )
                     )
             except RuntimeError:
@@ -527,6 +569,8 @@ class AgentManager:
                         prompt=user_prompt,
                         studio=studio,
                         system=system_prompt,
+                        tools=tools,
+                        messages=raw_msgs,
                     )
                 )
 
@@ -536,7 +580,7 @@ class AgentManager:
                     "content": resp.content,
                     "model": resp.model,
                     "provider": resp.provider,
-                    "tool_calls": [],  # ModelRouter doesn't support tool_calls
+                    "tool_calls": getattr(resp, "tool_calls", []),
                 }
             else:
                 return {
@@ -571,14 +615,16 @@ class AgentManager:
                 continue
             # Build function schema
             params = self._tool_params(tool["name"])
-            defs.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": params,
-                },
-            })
+            defs.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": params,
+                    },
+                }
+            )
         return defs
 
     @staticmethod
@@ -588,7 +634,10 @@ class AgentManager:
             "shell": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Shell command to execute"},
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to execute",
+                    },
                     "cwd": {"type": "string", "description": "Working directory"},
                 },
                 "required": ["command"],
@@ -650,7 +699,7 @@ class AgentManager:
         return schemas.get(tool_name, {"type": "object", "properties": {}})
 
     def _execute_tool_calls(
-        self, agent_id: str, tool_calls: list[dict]
+        self, agent_id: str, tool_calls: list[dict], studio: str = "dev"
     ) -> list[ToolResult]:
         """Execute tool calls returned by the LLM."""
         executor = self._get_tools()
@@ -666,7 +715,7 @@ class AgentManager:
             result = executor.execute(
                 tool_name=tool_name,
                 params=params,
-                agent_id=agent_id,
+                agent_id=studio,  # ToolExecutor maps permissions by studio ("dev", "sales")
             )
             results.append(result)
 
@@ -681,28 +730,31 @@ class AgentManager:
 
     _MEMORY_CONTENT_LIMIT = 2000  # Was 500 — too aggressive truncation
 
-    def _update_memory(
-        self, agent: AgentProfile, task: str, response: str
-    ) -> None:
+    def _update_memory(self, agent: AgentProfile, task: str, response: str) -> None:
         """Update agent's memory (in-memory + persistent SQLite)."""
         limit = self._MEMORY_CONTENT_LIMIT
-        agent.memory.append({
-            "role": "user",
-            "content": task[:limit],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-        agent.memory.append({
-            "role": "assistant",
-            "content": response[:limit],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        agent.memory.append(
+            {
+                "role": "user",
+                "content": task[:limit],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        agent.memory.append(
+            {
+                "role": "assistant",
+                "content": response[:limit],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         # Prune old memories
         if len(agent.memory) > agent.max_memory:
-            agent.memory = agent.memory[-agent.max_memory:]
+            agent.memory = agent.memory[-agent.max_memory :]
 
         # Persist to SQLite
         try:
             from kernel.state_manager import get_state
+
             state = get_state()
             state.save_agent_memory(agent.id, "user", task[:limit])
             state.save_agent_memory(agent.id, "assistant", response[:limit])
@@ -717,6 +769,7 @@ class AgentManager:
         # Fall back to SQLite (persistent memory)
         try:
             from kernel.state_manager import get_state
+
             state = get_state()
             return state.load_agent_memory(agent_id, limit)
         except Exception:
@@ -759,7 +812,9 @@ class AgentManager:
         # Execute the delegation
         logger.info(
             "Delegation: %s → %s: %s",
-            from_agent, to_agent, task[:80],
+            from_agent,
+            to_agent,
+            task[:80],
         )
 
         result = self.execute_task(
@@ -773,29 +828,35 @@ class AgentManager:
 
         # Emit delegation event
         bus = self._get_bus()
-        bus.publish_sync(Event(
-            type="agent.delegation",
-            payload={
-                "from": from_agent, "to": to_agent,
-                "task": task[:100], "status": delegation.status,
-            },
-            source=from_agent,
-            target=to_agent,
-        ))
+        bus.publish_sync(
+            Event(
+                type="agent.delegation",
+                payload={
+                    "from": from_agent,
+                    "to": to_agent,
+                    "task": task[:100],
+                    "status": delegation.status,
+                },
+                source=from_agent,
+                target=to_agent,
+            )
+        )
 
         return delegation
 
     # ── Crew Assembly ─────────────────────────────────────────
 
-    def assemble_crew(
-        self, mission_type: str
-    ) -> list[str]:
+    def assemble_crew(self, mission_type: str) -> list[str]:
         """
         Assemble a dynamic crew of agents for a mission type.
         Inspired by CrewAI crew concept.
         """
         crews: dict[str, list[str]] = {
-            "development": ["backend-specialist", "frontend-specialist", "devops-engineer"],
+            "development": [
+                "backend-specialist",
+                "frontend-specialist",
+                "devops-engineer",
+            ],
             "marketing": ["product-manager", "frontend-specialist"],
             "sales": ["product-owner", "product-manager"],
             "leadops": ["backend-specialist"],
@@ -803,8 +864,11 @@ class AgentManager:
             "analytics": ["backend-specialist"],
             "creative": ["frontend-specialist", "product-manager"],
             "full_agency": [
-                "product-owner", "product-manager", "project-planner",
-                "backend-specialist", "frontend-specialist",
+                "product-owner",
+                "product-manager",
+                "project-planner",
+                "backend-specialist",
+                "frontend-specialist",
             ],
         }
 
@@ -827,8 +891,11 @@ class AgentManager:
     def get_delegation_history(self, limit: int = 20) -> list[dict]:
         return [
             {
-                "id": d.id, "from": d.from_agent, "to": d.to_agent,
-                "task": d.task[:80], "status": d.status,
+                "id": d.id,
+                "from": d.from_agent,
+                "to": d.to_agent,
+                "task": d.task[:80],
+                "status": d.status,
                 "created_at": d.created_at,
             }
             for d in self._delegations[-limit:]

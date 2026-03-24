@@ -8,6 +8,7 @@ The SINGLE coordinator that wires all brain modules into one flow:
 
 This replaces manual wiring between isolated modules.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +27,7 @@ logger = logging.getLogger("agency.orchestrator")
 @dataclass
 class OrchestratedTask:
     """Full lifecycle of an orchestrated task."""
+
     id: str = field(default_factory=lambda: uuid4().hex[:10])
     task: str = ""
     studio: str = ""
@@ -55,13 +57,31 @@ COMPLEXITY_SIGNALS = {
         "preferred_tier": "free",
     },
     "medium": {
-        "keywords": ["analyze", "create", "draft", "plan", "write", "summarize", "compare"],
+        "keywords": [
+            "analyze",
+            "create",
+            "draft",
+            "plan",
+            "write",
+            "summarize",
+            "compare",
+        ],
         "max_tokens": 2000,
         "preferred_tier": "cloud",
     },
     "complex": {
-        "keywords": ["build", "architect", "debug", "implement", "optimize",
-                     "refactor", "design", "strategy", "research", "audit"],
+        "keywords": [
+            "build",
+            "architect",
+            "debug",
+            "implement",
+            "optimize",
+            "refactor",
+            "design",
+            "strategy",
+            "research",
+            "audit",
+        ],
         "max_tokens": 4000,
         "preferred_tier": "premium",
     },
@@ -100,18 +120,22 @@ class BrainOrchestrator:
         ot = OrchestratedTask(task=task, studio=studio)
         ot.status = "running"
 
-        self._bus.publish_sync(Event(
-            type="orchestrator.task_start",
-            source="orchestrator",
-            payload={"task_id": ot.id, "task": task[:200], "studio": studio},
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="orchestrator.task_start",
+                source="orchestrator",
+                payload={"task_id": ot.id, "task": task[:200], "studio": studio},
+            )
+        )
 
         try:
             # ── 1. SCORE COMPLEXITY ──
             ot.complexity, ot.complexity_score = self._score_complexity(task)
             logger.info(
                 "Task [%s] complexity: %s (%.1f)",
-                ot.id, ot.complexity, ot.complexity_score,
+                ot.id,
+                ot.complexity,
+                ot.complexity_score,
             )
 
             # ── 2. RESOLVE STUDIO ──
@@ -151,22 +175,24 @@ class BrainOrchestrator:
 
         ot.duration_ms = (time.monotonic() - start) * 1000
 
-        self._bus.publish_sync(Event(
-            type="orchestrator.task_complete",
-            source="orchestrator",
-            payload={
-                "task_id": ot.id,
-                "status": ot.status,
-                "studio": ot.studio,
-                "complexity": ot.complexity,
-                "quality_score": ot.quality_score,
-                "duration_ms": round(ot.duration_ms, 1),
-            },
-        ))
+        self._bus.publish_sync(
+            Event(
+                type="orchestrator.task_complete",
+                source="orchestrator",
+                payload={
+                    "task_id": ot.id,
+                    "status": ot.status,
+                    "studio": ot.studio,
+                    "complexity": ot.complexity,
+                    "quality_score": ot.quality_score,
+                    "duration_ms": round(ot.duration_ms, 1),
+                },
+            )
+        )
 
         self._history.append(ot)
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
         return ot
 
@@ -178,7 +204,7 @@ class BrainOrchestrator:
         scores = {"simple": 0.0, "medium": 0.0, "complex": 0.0}
 
         for level, signals in COMPLEXITY_SIGNALS.items():
-            for keyword in signals["keywords"]:
+            for keyword in signals["keywords"]:  # type: ignore
                 if keyword in task_lower:
                     scores[level] += 1.0
 
@@ -192,11 +218,13 @@ class BrainOrchestrator:
             scores["complex"] += 1.5
 
         # Multi-step detection
-        if any(w in task_lower for w in ["then", "after that", "step", "first", "next"]):
+        if any(
+            w in task_lower for w in ["then", "after that", "step", "first", "next"]
+        ):
             scores["complex"] += 1.0
 
         # Pick highest
-        best = max(scores, key=scores.get)
+        best = max(scores, key=scores.get)  # type: ignore
         score = scores[best]
 
         # Normalize to 1-10
@@ -214,17 +242,40 @@ class BrainOrchestrator:
         """Auto-detect which studio should handle this task."""
         try:
             from kernel.task_router import TaskRouter
+
             router = TaskRouter()
-            return router.route(task)
+            return router.route(task)  # type: ignore
         except Exception:
             # Fallback heuristic
             task_lower = task.lower()
             studio_keywords = {
-                "dev": ["code", "build", "implement", "bug", "api", "function", "deploy"],
+                "dev": [
+                    "code",
+                    "build",
+                    "implement",
+                    "bug",
+                    "api",
+                    "function",
+                    "deploy",
+                ],
                 "marketing": ["campaign", "content", "seo", "social", "brand", "copy"],
-                "sales": ["prospect", "outreach", "follow up", "deal", "pipeline", "cold"],
+                "sales": [
+                    "prospect",
+                    "outreach",
+                    "follow up",
+                    "deal",
+                    "pipeline",
+                    "cold",
+                ],
                 "leadops": ["lead", "contact", "scrape", "enrich", "qualifying"],
-                "analytics": ["analyze", "report", "metric", "kpi", "dashboard", "data"],
+                "analytics": [
+                    "analyze",
+                    "report",
+                    "metric",
+                    "kpi",
+                    "dashboard",
+                    "data",
+                ],
                 "creative": ["design", "visual", "logo", "graphic", "video", "photo"],
                 "abm": ["account", "target", "enterprise", "personalize"],
             }
@@ -243,8 +294,9 @@ class BrainOrchestrator:
         """Assemble a crew for this task."""
         try:
             from kernel.crew_engine import get_crew_engine
+
             ce = get_crew_engine()
-            crew = ce.assemble(task, studio)
+            crew = ce.assemble(task, studio)  # type: ignore
             return [m.agent_id for m in crew.members]
         except Exception as e:
             logger.debug("Crew assembly skipped: %s", e)
@@ -256,6 +308,7 @@ class BrainOrchestrator:
         """Pick the right model based on complexity and availability."""
         try:
             from kernel.provider_detector import get_provider_detector
+
             pd = get_provider_detector()
             if not pd._results:
                 pd.detect_all()
@@ -283,25 +336,34 @@ class BrainOrchestrator:
     # ── 5. Execute ───────────────────────────────────────────
 
     def _execute(
-        self, task: str, studio: str, model: str,
+        self,
+        task: str,
+        studio: str,
+        model: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute the task through the studio pipeline."""
         try:
             from studios.base_studio import load_all_studios
+
             studios = load_all_studios()
             studio_instance = studios.get(studio)
             if studio_instance:
                 result = studio_instance.run(task=task, description=task)
-                return result if isinstance(result, dict) else {"success": True, "content": str(result)}
+                return (
+                    result
+                    if isinstance(result, dict)
+                    else {"success": True, "content": str(result)}
+                )
         except Exception as e:
             logger.debug("Studio execution skipped: %s", e)
 
         # Fallback: record as a task
         try:
             from kernel.state_manager import get_state
+
             state = get_state()
-            task_id = state.create_task(
+            task_id = state.create_task(  # type: ignore
                 studio=studio,
                 description=task,
                 status="pending",
@@ -316,12 +378,11 @@ class BrainOrchestrator:
 
     # ── 6. Quality Gate ──────────────────────────────────────
 
-    def _evaluate_quality(
-        self, studio: str, result: dict
-    ) -> tuple[float, bool]:
+    def _evaluate_quality(self, studio: str, result: dict) -> tuple[float, bool]:
         """Evaluate output quality."""
         try:
             from kernel.quality_gates import get_quality_gates
+
             qg = get_quality_gates()
             evaluation = qg.evaluate(studio, result)
             return evaluation["score"], evaluation["passed"]
@@ -330,12 +391,11 @@ class BrainOrchestrator:
 
     # ── 7. Cross-Studio Chains ───────────────────────────────
 
-    def _trigger_chains(
-        self, studio: str, result: dict, success: bool
-    ) -> int:
+    def _trigger_chains(self, studio: str, result: dict, success: bool) -> int:
         """Trigger follow-up chains."""
         try:
             from kernel.cross_studio import get_cross_studio_pipelines
+
             csp = get_cross_studio_pipelines()
             execs = csp.trigger_chains(studio, result, success)
             return len(execs)
@@ -348,6 +408,7 @@ class BrainOrchestrator:
         """Record outcome for future optimization."""
         try:
             from kernel.memory_manager import get_memory_manager
+
             mm = get_memory_manager()
             mm.learn(
                 topic=f"orchestration:{ot.studio}:{ot.complexity}",
@@ -375,7 +436,7 @@ class BrainOrchestrator:
         completed = sum(1 for t in self._history if t.status == "completed")
         avg_duration = sum(t.duration_ms for t in self._history) / total
         avg_quality = sum(t.quality_score for t in self._history) / total
-        complexity_dist = {}
+        complexity_dist = {}  # type: ignore
         for t in self._history:
             complexity_dist[t.complexity] = complexity_dist.get(t.complexity, 0) + 1
 
@@ -412,10 +473,20 @@ class BrainOrchestrator:
         """Detect if a task should be decomposed into a multi-studio project."""
         task_lower = task.lower()
         multi_signals = [
-            "and sell", "and launch", "and promote", "and market",
-            "full pipeline", "build and", "create and", "make and",
-            "end to end", "product launch", "go to market",
-            "lead gen", "abm campaign", "content campaign",
+            "and sell",
+            "and launch",
+            "and promote",
+            "and market",
+            "full pipeline",
+            "build and",
+            "create and",
+            "make and",
+            "end to end",
+            "product launch",
+            "go to market",
+            "lead gen",
+            "abm campaign",
+            "content campaign",
         ]
         return any(s in task_lower for s in multi_signals)
 
@@ -432,6 +503,7 @@ class BrainOrchestrator:
         This decomposes the goal into phases and runs each studio in order.
         """
         from kernel.project_manager import get_project_manager
+
         pm = get_project_manager()
 
         project = pm.plan_and_execute(
@@ -452,4 +524,3 @@ def get_orchestrator() -> BrainOrchestrator:
     if _orchestrator is None:
         _orchestrator = BrainOrchestrator()
     return _orchestrator
-

@@ -8,6 +8,7 @@ Comprehensive logging of every AI interaction:
 - Queryable summaries by studio, model, time period
 - Retention policy with auto-cleanup
 """
+
 from __future__ import annotations
 
 import csv
@@ -15,10 +16,8 @@ import io
 import json
 import logging
 import sqlite3
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 from typing import Any
 
 from kernel.config import get_config
@@ -29,6 +28,7 @@ logger = logging.getLogger("agency.audit")
 @dataclass
 class AuditEntry:
     """A single audit log entry."""
+
     timestamp: str
     studio: str
     agent_id: str
@@ -112,14 +112,23 @@ class AuditTrail:
                 success, error, prompt_preview, correlation_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                now, studio, agent_id, model, provider,
-                tokens_in, tokens_out, estimated_cost, latency_ms,
-                1 if success else 0, error, prompt_preview[:100],
+                now,
+                studio,
+                agent_id,
+                model,
+                provider,
+                tokens_in,
+                tokens_out,
+                estimated_cost,
+                latency_ms,
+                1 if success else 0,
+                error,
+                prompt_preview[:100],
                 correlation_id,
             ),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return cursor.lastrowid  # type: ignore
 
     # ── Query ─────────────────────────────────────────────────
 
@@ -142,7 +151,8 @@ class AuditTrail:
         return {
             "period_days": days,
             "total_calls": row["total_calls"] or 0,
-            "total_tokens": (row["total_tokens_in"] or 0) + (row["total_tokens_out"] or 0),
+            "total_tokens": (row["total_tokens_in"] or 0)
+            + (row["total_tokens_out"] or 0),
             "total_cost_usd": round(row["total_cost"] or 0, 4),
             "avg_latency_ms": round(row["avg_latency"] or 0, 1),
             "failures": row["failures"] or 0,
@@ -242,14 +252,21 @@ class AuditTrail:
 
     def cleanup(self, retention_days: int = 30) -> int:
         """Delete audit entries older than retention period."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
+        ).isoformat()
         cursor = self._conn.execute(
-            "DELETE FROM audit_log WHERE timestamp < ?", (cutoff,),
+            "DELETE FROM audit_log WHERE timestamp < ?",
+            (cutoff,),
         )
         self._conn.commit()
         deleted = cursor.rowcount
         if deleted:
-            logger.info("Cleaned up %d audit entries older than %d days", deleted, retention_days)
+            logger.info(
+                "Cleaned up %d audit entries older than %d days",
+                deleted,
+                retention_days,
+            )
         return deleted
 
     def get_total_entries(self) -> int:

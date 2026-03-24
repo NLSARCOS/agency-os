@@ -8,6 +8,7 @@ Enterprise-grade safety for autonomous AI operations:
 - Content filter: PII detection, prompt injection, output validation
 - Budget tracking: real-time spend per studio/model with alerts
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +27,7 @@ logger = logging.getLogger("agency.guardrails")
 @dataclass
 class BudgetConfig:
     """Budget configuration for a scope (studio, agent, or global)."""
+
     max_tokens_per_day: int = 500_000
     max_cost_per_day: float = 10.0  # USD
     max_requests_per_minute: int = 30
@@ -36,6 +38,7 @@ class BudgetConfig:
 @dataclass
 class GuardrailResult:
     """Result of a guardrail check."""
+
     allowed: bool = True
     reason: str = ""
     warnings: list[str] = field(default_factory=list)
@@ -44,6 +47,7 @@ class GuardrailResult:
 @dataclass
 class UsageRecord:
     """Tracking record for token/cost usage."""
+
     tokens_in: int = 0
     tokens_out: int = 0
     estimated_cost: float = 0.0
@@ -196,7 +200,7 @@ class Guardrails:
             return GuardrailResult(
                 allowed=False,
                 reason=f"Token budget exceeded for '{scope}': "
-                       f"{total_tokens:,}/{budget.max_tokens_per_day:,}",
+                f"{total_tokens:,}/{budget.max_tokens_per_day:,}",
             )
 
         # Cost limit
@@ -204,21 +208,21 @@ class Guardrails:
             return GuardrailResult(
                 allowed=False,
                 reason=f"Cost budget exceeded for '{scope}': "
-                       f"${usage.estimated_cost:.2f}/${budget.max_cost_per_day:.2f}",
+                f"${usage.estimated_cost:.2f}/${budget.max_cost_per_day:.2f}",
             )
 
         # Warnings at threshold
         token_pct = total_tokens / budget.max_tokens_per_day
-        cost_pct = usage.estimated_cost / budget.max_cost_per_day if budget.max_cost_per_day > 0 else 0
+        cost_pct = (
+            usage.estimated_cost / budget.max_cost_per_day
+            if budget.max_cost_per_day > 0
+            else 0
+        )
 
         if token_pct >= budget.alert_threshold:
-            result.warnings.append(
-                f"⚠️ Token usage at {token_pct:.0%} for '{scope}'"
-            )
+            result.warnings.append(f"⚠️ Token usage at {token_pct:.0%} for '{scope}'")
         if cost_pct >= budget.alert_threshold:
-            result.warnings.append(
-                f"⚠️ Cost at {cost_pct:.0%} for '{scope}'"
-            )
+            result.warnings.append(f"⚠️ Cost at {cost_pct:.0%} for '{scope}'")
 
         return result
 
@@ -242,7 +246,7 @@ class Guardrails:
                 return GuardrailResult(
                     allowed=False,
                     reason=f"Rate limit exceeded for '{scope}': "
-                           f"{len(usage.request_timestamps)}/{budget.max_requests_per_minute} RPM",
+                    f"{len(usage.request_timestamps)}/{budget.max_requests_per_minute} RPM",
                 )
 
             # Concurrent check
@@ -251,7 +255,7 @@ class Guardrails:
                 return GuardrailResult(
                     allowed=False,
                     reason=f"Concurrent limit for '{scope}': "
-                           f"{active}/{budget.max_concurrent}",
+                    f"{active}/{budget.max_concurrent}",
                 )
 
             # Record this request
@@ -272,9 +276,7 @@ class Guardrails:
         # PII detection
         for pattern, pii_type in PII_PATTERNS:
             if re.search(pattern, text):
-                result.warnings.append(
-                    f"⚠️ Possible {pii_type} detected in {direction}"
-                )
+                result.warnings.append(f"⚠️ Possible {pii_type} detected in {direction}")
 
         # Prompt injection (input only)
         if direction == "input":
@@ -354,7 +356,9 @@ class Guardrails:
                 costs = c
                 break
 
-        return (tokens_in / 1000 * costs["input"]) + (tokens_out / 1000 * costs["output"])
+        return (tokens_in / 1000 * costs["input"]) + (
+            tokens_out / 1000 * costs["output"]
+        )
 
 
 _guardrails: Guardrails | None = None
