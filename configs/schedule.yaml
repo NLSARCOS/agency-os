@@ -4,7 +4,7 @@
 jobs:
   - name: mission_cycle
     description: Execute pending missions from the queue
-    interval_minutes: 20
+    interval_minutes: 1
     function: "kernel.scheduler:run_cycle"
 
   - name: report_generation

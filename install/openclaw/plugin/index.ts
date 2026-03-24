@@ -26,7 +26,7 @@ async function agencyFetch(path: string, options?: RequestInit) {
         "Content-Type": "application/json",
         ...(options?.headers || {}),
       },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(300000), // 5 minutes timeout for synchronous execution
     });
     return await resp.json();
   } catch (err: any) {
@@ -40,10 +40,9 @@ const orchestrateTool = {
   name: "agency_orchestrate",
   description:
     "Send a task/objective to Agency OS for autonomous execution. " +
-    "Returns immediately with mission IDs. Results are delivered " +
-    "automatically via callback — do NOT poll. " +
-    "Use this for ANY business objective: build apps, find leads, " +
-    "run campaigns, analyze data, etc.",
+    "This tool executes synchronously and might take up to 5 minutes to complete. " +
+    "Do not panic if it takes a while! When it returns, it will contain the final result. " +
+    "Use this for ANY business objective: build apps, find leads, run campaigns, etc.",
   parameters: {
     type: "object" as const,
     properties: {
@@ -60,11 +59,12 @@ const orchestrateTool = {
     required: ["prompt"],
   },
   async execute(args: { prompt: string; priority?: number }) {
-    return await agencyFetch("/api/orchestrate", {
+    return await agencyFetch("/api/orchestrate?sync=true", {
       method: "POST",
       body: JSON.stringify({
         prompt: args.prompt,
         priority: args.priority || 5,
+        sync: true
       }),
     });
   },

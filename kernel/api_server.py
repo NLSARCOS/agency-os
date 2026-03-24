@@ -214,6 +214,7 @@ def create_app() -> Any:
         """
         body = await request.json()
         prompt = body.get("prompt", "")
+        sync = body.get("sync", request.query_params.get("sync", "false").lower() == "true")
         body.get("priority", 5)
 
         if not prompt:
@@ -232,6 +233,42 @@ def create_app() -> Any:
                 result.get("sub_missions", 0),
                 prompt[:60],
             )
+            
+            if sync:
+                import time
+                from kernel.state_manager import get_state, MissionStatus
+                state = get_state()
+                start_time = time.time()
+                timeout = 290  # 4.8 minutes (slightly less than 5 min to avoid fetch abort)
+                
+                mission_ids = result.get("mission_ids", [])
+                
+                while time.time() - start_time < timeout:
+                    # Force process missions
+                    planner._engine.run_cycle()
+                    
+                    all_done = True
+                    final_results = []
+                    for mid in mission_ids:
+                        m = state.get_mission(mid)
+                        if m:
+                            final_results.append(m)
+                            if m["status"] not in [MissionStatus.DONE.value, MissionStatus.FAILED.value]:
+                                all_done = False
+                        else:
+                            all_done = False
+                                
+                    if all_done:
+                        return {
+                            "status": "success",
+                            "message": "All missions executed synchronously.",
+                            "missions": final_results,
+                            "mission_ids": mission_ids,
+                            "total": len(mission_ids),
+                            "studios": result.get("studios", [])
+                        }
+                    
+                    time.sleep(3)
 
             return {
                 "status": "queued",
