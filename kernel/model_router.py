@@ -374,7 +374,7 @@ class ModelRouter:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=20.0) as client:
             resp = client.post(
                 endpoint,
                 headers=headers,

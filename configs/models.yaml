@@ -10,7 +10,7 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free
 
@@ -21,7 +21,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free
 
@@ -32,7 +32,7 @@ pools:
     - name: gpt-5.4
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free
 
@@ -48,7 +48,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free
 
@@ -56,7 +56,7 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free
 
@@ -67,6 +67,6 @@ pools:
     - name: codex-5.3
       provider: openclaw
       tier: openclaw
-    - name: openrouter/qwen/qwen3-coder:free
+    - name: openrouter/anthropic/claude-3-haiku
       provider: openrouter
       tier: free

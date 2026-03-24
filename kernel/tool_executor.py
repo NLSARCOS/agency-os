@@ -159,6 +159,13 @@ class ToolExecutor:
                 ToolPermission.GIT,
                 ToolPermission.NETWORK,
             },
+            "backend-specialist": {
+                ToolPermission.READ,
+                ToolPermission.WRITE,
+                ToolPermission.EXECUTE,
+                ToolPermission.NETWORK,
+                ToolPermission.GIT,
+            },
             "leadops": {
                 ToolPermission.READ,
                 ToolPermission.WRITE,
