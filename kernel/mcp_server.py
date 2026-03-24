@@ -3,15 +3,21 @@
 Agency OS v3.5 — MCP Server
 Provides tools for OpenClaw to read Agency OS status.
 """
+import os
 import httpx
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+
+load_dotenv()
+API_KEY = os.environ.get("AGENCY_API_KEY", "")
+HEADERS = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
 
 mcp = FastMCP("Agency OS", description="Agency OS Internal Task Board Tools")
 
 @mcp.tool()
 async def get_active_missions() -> str:
     """Get the status of all currently active (running or queued) missions in Agency OS. Use this when the user asks 'what is the status of my tasks?' or 'how is the agency doing?'"""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             r = await client.get("http://localhost:8080/api/missions/active", timeout=5)
             if r.status_code == 200:
@@ -33,7 +39,7 @@ async def get_active_missions() -> str:
 @mcp.tool()
 async def get_recent_missions(limit: int = 5) -> str:
     """Get the status of recently completed or failed missions. Use this when the user asks 'what did the agency just finish?', 'show me the results of the last task', or 'did my objective complete?'"""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             r = await client.get(f"http://localhost:8080/api/missions/recent?limit={limit}", timeout=5)
             if r.status_code == 200:
@@ -55,7 +61,7 @@ async def get_recent_missions(limit: int = 5) -> str:
 @mcp.tool()
 async def get_mission_status(mission_id: int) -> str:
     """Get the detailed status of a specific mission by its ID. Use this when the user asks about a specific task ID."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             r = await client.get(f"http://localhost:8080/api/mission/{mission_id}/status", timeout=5)
             if r.status_code == 404:
@@ -85,7 +91,7 @@ async def submit_mission_feedback(mission_id: int, feedback: str, action: str = 
     Use this when the user says they don't like the result, e.g. 'tell the design team to make the logo blue'.
     'action' should be 'revise' or 'approve'.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             payload = {"action": action, "feedback": feedback, "priority": 7}
             r = await client.post(f"http://localhost:8080/api/mission/{mission_id}/feedback", json=payload, timeout=5)
@@ -99,7 +105,7 @@ async def submit_mission_feedback(mission_id: int, feedback: str, action: str = 
 @mcp.tool()
 async def cancel_mission(mission_id: int) -> str:
     """Cancel a queued or running mission. Use this when the user requests to stop a task."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             r = await client.post(f"http://localhost:8080/api/mission/{mission_id}/cancel", timeout=5)
             if r.status_code == 200:
@@ -114,7 +120,7 @@ async def delegate_task(prompt: str, priority: int = 5) -> str:
     """Create a new mission objective and delegate it to the agency agents. 
     Use this when the user asks you to do complex work that requires a specific team (e.g. 'write a blog post', 'analyze this code', 'create a marketing campaign').
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=HEADERS) as client:
         try:
             payload = {"prompt": prompt, "priority": priority}
             r = await client.post("http://localhost:8080/api/orchestrate", json=payload, timeout=10)
