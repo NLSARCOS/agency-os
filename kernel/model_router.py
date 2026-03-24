@@ -217,7 +217,10 @@ class ModelRouter:
 
             for attempt in range(max_retries):
                 try:
-                    response = self._call_provider(model_cfg, prompt, system, tools, messages)
+                    import asyncio
+                    response = await asyncio.to_thread(
+                        self._call_provider, model_cfg, prompt, system, tools, messages
+                    )
                     # Log success
                     state = get_state()
                     state.log_model_usage(
@@ -369,12 +372,14 @@ class ModelRouter:
         payload = {"model": api_model, "messages": messages}
         if tools:
             payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
-        resp = self._client.post(
-            endpoint,
-            headers=headers,
-            json=payload,
-        )
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -411,11 +416,12 @@ class ModelRouter:
         if system:
             body["system"] = system
 
-        resp = self._client.post(
-            PROVIDER_ENDPOINTS["anthropic"],
-            headers=headers,
-            json=body,
-        )
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.post(
+                PROVIDER_ENDPOINTS["anthropic"],
+                headers=headers,
+                json=body,
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -440,10 +446,11 @@ class ModelRouter:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        resp = self._client.post(
-            PROVIDER_ENDPOINTS["ollama"],
-            json={"model": model, "messages": messages, "stream": False},
-        )
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.post(
+                PROVIDER_ENDPOINTS["ollama"],
+                json={"model": model, "messages": messages, "stream": False},
+            )
         resp.raise_for_status()
         data = resp.json()
 
@@ -505,7 +512,7 @@ class ModelRouter:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=5,
                 env=env,
             )
             latency = (time.monotonic() - start) * 1000

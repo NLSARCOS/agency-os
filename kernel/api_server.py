@@ -244,8 +244,9 @@ def create_app() -> Any:
                 mission_ids = result.get("mission_ids", [])
                 
                 while time.time() - start_time < timeout:
-                    # Force process missions
-                    planner._engine.run_cycle()
+                    # Force process missions in a background thread to prevent FastAPI blocking
+                    import asyncio
+                    await asyncio.to_thread(planner._engine.run_cycle)
                     
                     all_done = True
                     final_results = []
@@ -268,7 +269,8 @@ def create_app() -> Any:
                             "studios": result.get("studios", [])
                         }
                     
-                    time.sleep(3)
+                    import asyncio
+                    await asyncio.sleep(3)
 
             return {
                 "status": "queued",

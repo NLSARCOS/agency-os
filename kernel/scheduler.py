@@ -271,9 +271,13 @@ def run_cycle() -> dict:
     from kernel.mission_engine import MissionEngine
 
     engine = MissionEngine()
-    results = engine.run_cycle()
-    return {
-        "executed": len(results),
-        "done": sum(1 for r in results if r.get("status") == "done"),  # type: ignore
-        "failed": sum(1 for r in results if r.get("status") == "failed"),  # type: ignore
-    }
+    res = engine.run_cycle()
+    if res and getattr(res, "get", None):
+        if res.get("action") == "executed":
+            status = res.get("status", "unknown")
+            return {
+                "executed": 1,
+                "done": 1 if status == "done" else 0,
+                "failed": 1 if status == "failed" else 0,
+            }
+    return {"executed": 0, "done": 0, "failed": 0}

@@ -332,6 +332,10 @@ class AgentManager:
         # Build tool definitions if tools are enabled
         tool_defs = self._build_tool_defs(agent_id) if tools_enabled else []
 
+        if tool_defs:
+            tool_names = [t.get("function", {}).get("name") for t in tool_defs]
+            system_prompt += f"\n\n[CRITICAL INSTRUCTION] You have access to the following tools: {', '.join(str(n) for n in tool_names)}. You MUST use these tools to perform real actions instead of just pretending or describing them in text."
+
         # ── ReAct Loop: LLM → Tools → LLM → ... → Final Answer ──
         messages = [
             ChatMessage(role="system", content=system_prompt),
